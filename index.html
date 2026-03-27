@@ -649,16 +649,15 @@ function markDone(matchId, gi) {
   game.winner = game.s1>game.s2 ? 't1' : 't2';
 
   if (!isDB) {
-    const allDone = m.games.every(g=>g.done);
-    if (allDone) {
-      const gw = gamesWon(m);
-      if (gw.t1===gw.t2) {
-        m.needsDB = true;
-      } else {
-        m.done = true;
-        m.winner = gw.t1>gw.t2 ? 't1' : 't2';
-        launchConfetti();
-      }
+    const gw = gamesWon(m);
+    if (gw.t1 >= 3 || gw.t2 >= 3) {
+      // One team clinched 3 wins — match over, no need for remaining games
+      m.done = true;
+      m.winner = gw.t1 > gw.t2 ? 't1' : 't2';
+      launchConfetti();
+    } else if (m.games.every(g=>g.done)) {
+      // All 4 played and it's 2-2 — need Dreambreaker
+      m.needsDB = true;
     }
   } else {
     m.done = true;
@@ -897,9 +896,10 @@ function renderMatchCard(def, m, matchId) {
   else if (m.games.some(g=>g.s1>0||g.s2>0||g.done)||m.db.s1>0||m.db.s2>0) { badge='Live'; badgeClass='badge-live'; }
   else { badge='Upcoming'; badgeClass='badge-upcoming'; }
 
-  // Games to render
+  // Games to render — hide game 4 if match was already won after 3 games
   let gamesHtml = '';
   for (let gi=0;gi<4;gi++) {
+    if (gi===3 && m.done && !m.games[3].done) continue; // skipped — early 3-0 win
     gamesHtml += renderGameSection(def, m, gi, matchId);
   }
   if (m.needsDB) {
@@ -957,7 +957,10 @@ function renderChampCard() {
   else { badge='Upcoming'; badgeClass='badge-upcoming'; }
 
   let gamesHtml = '';
-  for (let gi=0;gi<4;gi++) gamesHtml += renderGameSection(def, cm, gi, 'champ');
+  for (let gi=0;gi<4;gi++) {
+    if (gi===3 && cm.done && !cm.games[3].done) continue;
+    gamesHtml += renderGameSection(def, cm, gi, 'champ');
+  }
   if (cm.needsDB) gamesHtml += renderGameSection(def, cm, 4, 'champ');
 
   let resultHtml = '';
@@ -1010,7 +1013,10 @@ function renderBronzeCard() {
   else { badge='Upcoming'; badgeClass='badge-upcoming'; }
 
   let gamesHtml = '';
-  for (let gi=0;gi<4;gi++) gamesHtml += renderGameSection(def, bm, gi, 'bronze');
+  for (let gi=0;gi<4;gi++) {
+    if (gi===3 && bm.done && !bm.games[3].done) continue;
+    gamesHtml += renderGameSection(def, bm, gi, 'bronze');
+  }
   if (bm.needsDB) gamesHtml += renderGameSection(def, bm, 4, 'bronze');
 
   let resultHtml = '';
