@@ -691,7 +691,7 @@ function undoGame(matchId, gi) {
 }
 
 function resetMatch(matchId) {
-  if (!confirm('Reset this match?')) return;
+  if (prompt('Enter password to reset:') !== 'terry') return;
   if (matchId==='champ') state.champMatch = null;
   else if (matchId==='bronze') state.bronzeMatch = null;
   else state.matches[matchId] = blankMatch(matchId);
