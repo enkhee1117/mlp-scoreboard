@@ -167,7 +167,7 @@
 
     .standings-row {
       display: grid;
-      grid-template-columns: 24px 1fr 42px 54px 46px 52px;
+      grid-template-columns: 24px 1fr 42px 54px 46px 52px 32px;
       align-items: center;
       padding: 12px 14px;
       border-top: 1px solid #252525;
@@ -181,6 +181,13 @@
       font-size: 10px; color: #555; font-weight: 700;
       text-transform: uppercase; letter-spacing: 0.5px;
     }
+    .edit-team-btn {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: #252525; border: none; color: #666;
+      font-size: 14px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .edit-team-btn:active { background: #333; }
     .standings-rank { font-size: 13px; color: #555; font-weight: 700; }
     .standings-team { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
     .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -261,12 +268,15 @@
 // ═══════════════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════════════
-const TEAMS = {
+const DEFAULT_TEAMS = {
   red:   { name: 'Team Red',   color: '#ef4444', males: ['Thai','Enrique'],    females: ['Shilan','Sandy']    },
   blue:  { name: 'Team Blue',  color: '#60a5fa', males: ['Ed','Michael Lee'],  females: ['Manal','Joomi']     },
   green: { name: 'Team Green', color: '#4ade80', males: ['Enke','Andrew'],     females: ['Jenny','Young']     },
   gold:  { name: 'Team Gold',  color: '#facc15', males: ['Paul','Alix'],       females: ['Terry','Elina']     },
 };
+
+// Always read teams from state so edits persist & sync
+function T(key) { return (state && state.teams && state.teams[key]) || DEFAULT_TEAMS[key]; }
 
 const SCHEDULE = [
   { id:0, round:1, court:'1', t1:'red',  t2:'blue'  },
@@ -282,7 +292,7 @@ const GAME_LABELS = ["Women's Doubles","Men's Doubles","Mixed Doubles 1","Mixed 
 // mixedOpt: { t1: 0|1, t2: 0|1 }
 // opt=0: Mixed1=(F0+M0, F1+M1)  opt=1: Mixed1=(F1+M0, F0+M1)  — females swap
 function gamePlayers(def, gi, mixedOpt) {
-  const t1 = TEAMS[def.t1], t2 = TEAMS[def.t2];
+  const t1 = T(def.t1), t2 = T(def.t2);
   if (gi===0) return { p1: t1.females.join(' & '), p2: t2.females.join(' & ') };
   if (gi===1) return { p1: t1.males.join(' & '),   p2: t2.males.join(' & ')   };
   const o1 = (mixedOpt && mixedOpt.t1) || 0;
@@ -307,7 +317,7 @@ function blankMatch(id) {
 }
 
 function defaultState() {
-  return { view:'matches', matches:SCHEDULE.map(m=>blankMatch(m.id)), champMatch:null, bronzeMatch:null };
+  return { view:'matches', matches:SCHEDULE.map(m=>blankMatch(m.id)), champMatch:null, bronzeMatch:null, teams: JSON.parse(JSON.stringify(DEFAULT_TEAMS)) };
 }
 
 function loadState() {
@@ -436,7 +446,7 @@ function matchPoints(match) {
 
 function standings() {
   const s = {};
-  Object.keys(TEAMS).forEach(k=>{s[k]={mp:0,gw:0,gp:0,pf:0,pa:0};});
+  Object.keys(DEFAULT_TEAMS).forEach(k=>{s[k]={mp:0,gw:0,gp:0,pf:0,pa:0};});
 
   SCHEDULE.forEach((def,i)=>{
     const m = state.matches[i];
@@ -583,9 +593,54 @@ function toggleMixed(matchId, team) {
 function setView(v) { state.view=v; save(); render(); }
 
 // ═══════════════════════════════════════════════
+//  TEAM EDITOR
+// ═══════════════════════════════════════════════
+function showTeamEditor(key) {
+  const existing = document.getElementById('team-editor-overlay');
+  if (existing) existing.remove();
+  const t = T(key);
+  const el = document.createElement('div');
+  el.className = 'overlay'; el.id = 'team-editor-overlay';
+  el.innerHTML = `
+    <div class="overlay-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span style="width:14px;height:14px;border-radius:50%;background:${t.color};flex-shrink:0;display:inline-block"></span>
+        <h2 style="margin:0">Edit ${t.name}</h2>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Team Name</div>
+      <input class="overlay-input" id="te-name" value="${t.name}" placeholder="Team name" />
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">Male Players</div>
+      <input class="overlay-input" id="te-m0" value="${t.males[0]}" placeholder="Male player 1" style="margin-bottom:6px"/>
+      <input class="overlay-input" id="te-m1" value="${t.males[1]}" placeholder="Male player 2" />
+      <div style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">Female Players</div>
+      <input class="overlay-input" id="te-f0" value="${t.females[0]}" placeholder="Female player 1" style="margin-bottom:6px"/>
+      <input class="overlay-input" id="te-f1" value="${t.females[1]}" placeholder="Female player 2" />
+      <div class="overlay-btns" style="margin-top:16px">
+        <button class="overlay-btn-primary" onclick="saveTeamEdit('${key}')">Save</button>
+        <button class="overlay-btn-skip" onclick="document.getElementById('team-editor-overlay').remove()">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  document.getElementById('te-name').focus();
+}
+
+function saveTeamEdit(key) {
+  if (!state.teams) state.teams = JSON.parse(JSON.stringify(DEFAULT_TEAMS));
+  const name  = document.getElementById('te-name').value.trim() || T(key).name;
+  const m0    = document.getElementById('te-m0').value.trim()   || T(key).males[0];
+  const m1    = document.getElementById('te-m1').value.trim()   || T(key).males[1];
+  const f0    = document.getElementById('te-f0').value.trim()   || T(key).females[0];
+  const f1    = document.getElementById('te-f1').value.trim()   || T(key).females[1];
+  state.teams[key] = { ...state.teams[key], name, males:[m0,m1], females:[f0,f1] };
+  document.getElementById('team-editor-overlay').remove();
+  save(); render();
+}
+
+// ═══════════════════════════════════════════════
 //  RENDER HELPERS
 // ═══════════════════════════════════════════════
-function tc(key) { return TEAMS[key].color; }
+function tc(key) { return T(key).color; }
 
 function scoreBlock(matchId, gi, s1, s2, done, winner, t1key, t2key) {
   const mid = matchId;
@@ -627,7 +682,7 @@ function scoreBlock(matchId, gi, s1, s2, done, winner, t1key, t2key) {
 
 function renderMixedSwapRow(def, m, matchId) {
   const opt = m.mixedOpt || {t1:0,t2:0};
-  const t1 = TEAMS[def.t1], t2 = TEAMS[def.t2];
+  const t1 = T(def.t1), t2 = T(def.t2);
   // Show current pairing summary for each team
   const p1a = `${t1.females[opt.t1===0?0:1]} & ${t1.males[0]}`;
   const p1b = `${t1.females[opt.t1===0?1:0]} & ${t1.males[1]}`;
@@ -666,7 +721,7 @@ function renderGameSection(def, m, gi, matchId) {
   let doneLabelHtml = '';
   if (game.done) {
     const winKey = game.winner==='t1'?t1:t2;
-    doneLabelHtml = `<span class="game-done-label" style="color:${tc(winKey)}">${TEAMS[winKey].name} wins</span>`;
+    doneLabelHtml = `<span class="game-done-label" style="color:${tc(winKey)}">${T(winKey).name} wins</span>`;
   }
 
   // Insert swap row just before Mixed Doubles 1
@@ -690,7 +745,7 @@ function renderGameSection(def, m, gi, matchId) {
 }
 
 function renderMatchCard(def, m, matchId) {
-  const t1 = TEAMS[def.t1], t2 = TEAMS[def.t2];
+  const t1 = T(def.t1), t2 = T(def.t2);
   const gw = gamesWon(m);
   const pts = matchPoints(m);
 
@@ -714,7 +769,7 @@ function renderMatchCard(def, m, matchId) {
   if (m.done) {
     const winKey = m.winner==='t1'?def.t1:def.t2;
     const extra = m.needsDB ? ' via Dreambreaker' : '';
-    resultHtml = `<div class="result-banner" style="background:#0f2a0f;color:${tc(winKey)}">${TEAMS[winKey].name} wins the match${extra}!</div>`;
+    resultHtml = `<div class="result-banner" style="background:#0f2a0f;color:${tc(winKey)}">${T(winKey).name} wins the match${extra}!</div>`;
   }
 
   return `
@@ -751,7 +806,7 @@ function renderChampCard() {
   const def = { t1: cm.t1key, t2: cm.t2key, round:'Champ', court:'3' };
   const gw = gamesWon(cm);
   const pts = matchPoints(cm);
-  const t1 = TEAMS[cm.t1key], t2 = TEAMS[cm.t2key];
+  const t1 = T(cm.t1key), t2 = T(cm.t2key);
 
   let badge, badgeClass;
   if (cm.done) { badge='Final'; badgeClass='badge-done'; }
@@ -766,7 +821,7 @@ function renderChampCard() {
   if (cm.done) {
     const winKey = cm.winner==='t1'?cm.t1key:cm.t2key;
     const extra = cm.needsDB?' via Dreambreaker':'';
-    resultHtml = `<div class="result-banner" style="background:#2a2000;color:#facc15">🏆 ${TEAMS[winKey].name} are the Champions${extra}!</div>`;
+    resultHtml = `<div class="result-banner" style="background:#2a2000;color:#facc15">🏆 ${T(winKey).name} are the Champions${extra}!</div>`;
   }
 
   return `
@@ -804,7 +859,7 @@ function renderBronzeCard() {
   const def = { t1: bm.t1key, t2: bm.t2key, round:'Bronze', court:'2' };
   const gw = gamesWon(bm);
   const pts = matchPoints(bm);
-  const t1 = TEAMS[bm.t1key], t2 = TEAMS[bm.t2key];
+  const t1 = T(bm.t1key), t2 = T(bm.t2key);
 
   let badge, badgeClass;
   if (bm.done) { badge='Final'; badgeClass='badge-done'; }
@@ -819,7 +874,7 @@ function renderBronzeCard() {
   if (bm.done) {
     const winKey = bm.winner==='t1'?bm.t1key:bm.t2key;
     const extra = bm.needsDB?' via Dreambreaker':'';
-    resultHtml = `<div class="result-banner" style="background:#1a1200;color:#cd7f32">🥉 ${TEAMS[winKey].name} win Bronze${extra}!</div>`;
+    resultHtml = `<div class="result-banner" style="background:#1a1200;color:#cd7f32">🥉 ${T(winKey).name} win Bronze${extra}!</div>`;
   }
 
   return `
@@ -885,9 +940,9 @@ function renderMatchesView() {
           <div style="padding:20px;text-align:center">
             <div style="color:#cd7f32;font-size:15px;font-weight:700;margin-bottom:8px">3rd Place Match · Court 2</div>
             <div style="font-size:13px;color:#888">
-              <span style="color:${tc(k3)};font-weight:700">${TEAMS[k3].name}</span>
+              <span style="color:${tc(k3)};font-weight:700">${T(k3).name}</span>
               &nbsp;vs&nbsp;
-              <span style="color:${tc(k4)};font-weight:700">${TEAMS[k4].name}</span>
+              <span style="color:${tc(k4)};font-weight:700">${T(k4).name}</span>
             </div>
             <button onclick="startBronze()" style="margin-top:14px;padding:12px 24px;background:#cd7f32;color:#000;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
               Start Bronze Match →
@@ -907,9 +962,9 @@ function renderMatchesView() {
           <div style="padding:20px;text-align:center">
             <div style="color:#facc15;font-size:15px;font-weight:700;margin-bottom:8px">Finalists · Court 3</div>
             <div style="font-size:13px;color:#888">
-              <span style="color:${tc(k1)};font-weight:700">${TEAMS[k1].name}</span>
+              <span style="color:${tc(k1)};font-weight:700">${T(k1).name}</span>
               &nbsp;vs&nbsp;
-              <span style="color:${tc(k2)};font-weight:700">${TEAMS[k2].name}</span>
+              <span style="color:${tc(k2)};font-weight:700">${T(k2).name}</span>
             </div>
             <button onclick="startChamp()" style="margin-top:14px;padding:12px 24px;background:#facc15;color:#000;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
               Start Championship →
@@ -930,7 +985,7 @@ function renderStandings() {
 
   let rows = '';
   st.forEach((row,i)=>{
-    const team = TEAMS[row.key];
+    const team = T(row.key);
     const isTop2 = i<2;
     rows += `
       <div class="standings-row">
@@ -943,6 +998,7 @@ function renderStandings() {
         <div class="standings-games">${row.gw}/${row.gp}</div>
         <div class="standings-diff">${row.diff>0?'+':''}${row.diff}</div>
         <div class="finals-badge ${isTop2&&rrDone?'finals-in':i===2&&rrDone?'bronze-in':'finals-out'}">${isTop2&&rrDone?'Finals':i===2&&rrDone?'Bronze':'—'}</div>
+        <button class="edit-team-btn" onclick="showTeamEditor('${row.key}')">✏️</button>
       </div>
     `;
   });
@@ -967,7 +1023,7 @@ function renderStandings() {
           <span></span><span>Team</span><span style="text-align:center">Pts</span>
           <span style="text-align:center">W/G</span>
           <span style="text-align:center">+/−</span>
-          <span>Status</span>
+          <span>Status</span><span></span>
         </div>
         ${rows}
       </div>
@@ -988,12 +1044,12 @@ function renderStandings() {
       <div class="card-label" style="margin:16px 12px 0">Teams</div>
       <div class="card">
         <div class="info-card" style="line-height:1.8">
-          ${Object.entries(TEAMS).map(([k,t])=>`
+          ${Object.keys(DEFAULT_TEAMS).map(k=>{ const t=T(k); return `
             <div style="margin-bottom:8px">
               <span style="color:${t.color};font-weight:700">${t.name}</span><br>
               <span style="color:#888;font-size:12px">♂ ${t.males.join(', ')} &nbsp;·&nbsp; ♀ ${t.females.join(', ')}</span>
             </div>
-          `).join('')}
+          `; }).join('')}
         </div>
       </div>
       <div class="page-pad"></div>
