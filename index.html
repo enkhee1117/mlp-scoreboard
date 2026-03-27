@@ -357,6 +357,8 @@ function initSync() {
       const payload = JSON.parse(e.data);
       if (payload.data) {
         state = payload.data;
+        // Migrate: ensure teams always present
+        if (!state.teams) state.teams = JSON.parse(JSON.stringify(DEFAULT_TEAMS));
         localStorage.setItem('mlp_v3', JSON.stringify(state));
         syncStatus = 'ok'; render();
       } else if (payload.path === '/' && payload.data === null) {
@@ -418,10 +420,7 @@ function renderSyncBar() {
   const cls = syncStatus==='ok'?'sync-connected':syncStatus==='error'?'sync-disconnected':'sync-pending';
   const label = syncStatus==='ok'?'Live sync on':syncStatus==='error'?'Sync error':syncStatus==='off'?'Local only':'Connecting…';
   bar.className = 'sync-bar ' + cls;
-  bar.innerHTML = `
-    <span><span class="sync-dot"></span><span class="sync-label">${label}</span></span>
-    <button class="sync-setup-btn" onclick="showSetupOverlay()">${syncStatus==='off'?'Set up sync':'Manage sync'}</button>
-  `;
+  bar.innerHTML = `<span><span class="sync-dot"></span><span class="sync-label">${label}</span></span>`;
 }
 
 let state = loadState();
