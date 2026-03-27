@@ -691,6 +691,14 @@ function undoGame(matchId, gi) {
   save(); render();
 }
 
+function resetAll() {
+  if (prompt('Enter password to reset everything:') !== 'terry') return;
+  state.matches = SCHEDULE.map(m=>blankMatch(m.id));
+  state.champMatch = null;
+  state.bronzeMatch = null;
+  save(); render();
+}
+
 function resetMatch(matchId) {
   if (prompt('Enter password to reset:') !== 'terry') return;
   if (matchId==='champ') state.champMatch = null;
@@ -1125,6 +1133,11 @@ function renderMatchesView() {
     }
   }
 
+  html += `
+    <div style="padding:16px 12px 4px;text-align:center">
+      <button class="reset-btn" style="border-color:#5a1a1a;color:#f87171;padding:10px 24px;font-size:13px" onclick="resetAll()">↺ Reset All Games</button>
+    </div>
+  `;
   html += '<div class="page-pad"></div></div>';
   return html;
 }
