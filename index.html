@@ -206,6 +206,53 @@
 
     /* ── PAGE BOTTOM PAD ── */
     .page-pad { height: 40px; }
+
+    /* ── SYNC ── */
+    .sync-bar {
+      background: #141414; border-bottom: 1px solid #2a2a2a;
+      padding: 8px 14px; display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px;
+    }
+    .sync-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink:0; }
+    .sync-connected .sync-dot { background: #4ade80; }
+    .sync-disconnected .sync-dot { background: #ef4444; }
+    .sync-pending .sync-dot { background: #facc15; animation: pulse 1s infinite; }
+    .sync-label { color: #888; }
+    .sync-connected .sync-label { color: #4ade80; }
+    .sync-setup-btn {
+      font-size: 11px; padding: 4px 10px; background: #2a2a2a;
+      border: none; border-radius: 6px; color: #aaa; cursor: pointer; font-weight: 600;
+    }
+
+    /* ── SETUP OVERLAY ── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999; padding: 20px;
+    }
+    .overlay-card {
+      background: #1a1a1a; border-radius: 18px; padding: 24px;
+      width: 100%; max-width: 420px; border: 1px solid #333;
+    }
+    .overlay-card h2 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    .overlay-card p { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 14px; }
+    .overlay-card ol { font-size: 13px; color: #aaa; line-height: 2; padding-left: 18px; margin-bottom: 16px; }
+    .overlay-card ol strong { color: #fff; }
+    .overlay-input {
+      width: 100%; padding: 12px; background: #0d0d0d; border: 1px solid #333;
+      border-radius: 10px; color: #fff; font-size: 13px; margin-bottom: 10px;
+      outline: none;
+    }
+    .overlay-input:focus { border-color: #555; }
+    .overlay-btns { display: flex; gap: 8px; }
+    .overlay-btn-primary {
+      flex: 1; padding: 12px; background: #fff; color: #000;
+      border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer;
+    }
+    .overlay-btn-skip {
+      padding: 12px 16px; background: #2a2a2a; color: #888;
+      border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -259,19 +306,112 @@ function blankMatch(id) {
   return { id, games:[0,1,2,3].map(()=>blankGame()), db:blankGame(), needsDB:false, done:false, winner:null, mixedOpt:{t1:0,t2:0} };
 }
 
-function loadState() {
-  try {
-    const s = localStorage.getItem('mlp_v3');
-    if (s) return JSON.parse(s);
-  } catch(e){}
-  return {
-    view: 'matches',
-    matches: SCHEDULE.map(m=>blankMatch(m.id)),
-    champMatch: null,
-    bronzeMatch: null,
-  };
+function defaultState() {
+  return { view:'matches', matches:SCHEDULE.map(m=>blankMatch(m.id)), champMatch:null, bronzeMatch:null };
 }
-function save() { localStorage.setItem('mlp_v3', JSON.stringify(state)); }
+
+function loadState() {
+  try { const s=localStorage.getItem('mlp_v3'); if(s) return JSON.parse(s); } catch(e){}
+  return defaultState();
+}
+
+// ═══════════════════════════════════════════════
+//  FIREBASE SYNC
+// ═══════════════════════════════════════════════
+let FIREBASE_URL = localStorage.getItem('mlp_firebase_url') || '';
+let syncStatus = FIREBASE_URL ? 'pending' : 'off'; // 'off'|'pending'|'ok'|'error'
+let syncSource = null;
+let saveTimer = null;
+
+function save() {
+  localStorage.setItem('mlp_v3', JSON.stringify(state));
+  if (!FIREBASE_URL) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fetch(FIREBASE_URL + '/mlp_state.json', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(state)
+    }).catch(()=>{ syncStatus='error'; renderSyncBar(); });
+  }, 150); // debounce rapid taps
+}
+
+function initSync() {
+  if (syncSource) { syncSource.close(); syncSource = null; }
+  if (!FIREBASE_URL) { syncStatus='off'; renderSyncBar(); return; }
+  syncStatus = 'pending'; renderSyncBar();
+  syncSource = new EventSource(FIREBASE_URL + '/mlp_state.json');
+  syncSource.addEventListener('put', e => {
+    try {
+      const payload = JSON.parse(e.data);
+      if (payload.data) {
+        state = payload.data;
+        localStorage.setItem('mlp_v3', JSON.stringify(state));
+        syncStatus = 'ok'; render();
+      } else if (payload.path === '/' && payload.data === null) {
+        // DB is empty — push our local state up
+        save();
+        syncStatus = 'ok'; renderSyncBar();
+      }
+    } catch(_) {}
+  });
+  syncSource.onerror = () => { syncStatus='error'; renderSyncBar(); };
+}
+
+function connectFirebase() {
+  const input = document.getElementById('fb-url-input');
+  const url = (input ? input.value : '').trim().replace(/\/$/, '');
+  if (!url.startsWith('https://')) { alert('Enter a valid Firebase database URL (starts with https://)'); return; }
+  FIREBASE_URL = url;
+  localStorage.setItem('mlp_firebase_url', FIREBASE_URL);
+  document.getElementById('sync-overlay').remove();
+  initSync();
+}
+
+function disconnectFirebase() {
+  FIREBASE_URL = ''; localStorage.removeItem('mlp_firebase_url');
+  initSync();
+}
+
+function showSetupOverlay() {
+  const existing = document.getElementById('sync-overlay');
+  if (existing) { existing.remove(); return; }
+  const el = document.createElement('div');
+  el.className = 'overlay'; el.id = 'sync-overlay';
+  el.innerHTML = `
+    <div class="overlay-card">
+      <h2>🔄 Live Sync Setup</h2>
+      <p>Connect a free Firebase Realtime Database so everyone sees scores update in real time.</p>
+      <ol>
+        <li>Go to <strong>console.firebase.google.com</strong></li>
+        <li>Create a project → <strong>Build → Realtime Database</strong></li>
+        <li>Click <strong>Create Database</strong> → choose <strong>Test mode</strong></li>
+        <li>Copy the database URL<br><span style="color:#666;font-size:11px">(looks like https://your-project-default-rtdb.firebaseio.com)</span></li>
+      </ol>
+      <input class="overlay-input" id="fb-url-input" type="url"
+        placeholder="https://your-project-default-rtdb.firebaseio.com"
+        value="${FIREBASE_URL}" />
+      <div class="overlay-btns">
+        <button class="overlay-btn-primary" onclick="connectFirebase()">Connect</button>
+        <button class="overlay-btn-skip" onclick="document.getElementById('sync-overlay').remove()">Skip</button>
+      </div>
+      ${FIREBASE_URL ? `<div style="margin-top:10px;text-align:center"><button onclick="disconnectFirebase();document.getElementById('sync-overlay').remove()" style="background:none;border:none;color:#ef4444;font-size:12px;cursor:pointer">Disconnect &amp; use local only</button></div>` : ''}
+    </div>
+  `;
+  document.body.appendChild(el);
+}
+
+function renderSyncBar() {
+  const bar = document.getElementById('sync-status-bar');
+  if (!bar) return;
+  const cls = syncStatus==='ok'?'sync-connected':syncStatus==='error'?'sync-disconnected':'sync-pending';
+  const label = syncStatus==='ok'?'Live sync on':syncStatus==='error'?'Sync error':syncStatus==='off'?'Local only':'Connecting…';
+  bar.className = 'sync-bar ' + cls;
+  bar.innerHTML = `
+    <span><span class="sync-dot"></span><span class="sync-label">${label}</span></span>
+    <button class="sync-setup-btn" onclick="showSetupOverlay()">${syncStatus==='off'?'Set up sync':'Manage sync'}</button>
+  `;
+}
 
 let state = loadState();
 
@@ -870,12 +1010,15 @@ function render() {
       <button onclick="setView('matches')" class="${state.view==='matches'?'active':''}">Matches</button>
       <button onclick="setView('standings')" class="${state.view==='standings'?'active':''}">Standings</button>
     </nav>
+    <div class="sync-bar sync-pending" id="sync-status-bar"></div>
   `;
   const body = state.view==='matches' ? renderMatchesView() : renderStandings();
   document.getElementById('app').innerHTML = nav + body;
+  renderSyncBar();
 }
 
 render();
+initSync();
 </script>
 </body>
 </html>
