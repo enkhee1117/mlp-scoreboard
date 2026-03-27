@@ -377,6 +377,12 @@ const DEFAULT_TEAMS = {
 // Always read teams from state so edits persist & sync
 function T(key) { return (state && state.teams && state.teams[key]) || DEFAULT_TEAMS[key]; }
 
+// Court name lookup — court numbers are 1-based strings
+function courtName(num) {
+  const idx = parseInt(num) - 1;
+  return (state && state.courts && state.courts[idx]) || ('Court ' + num);
+}
+
 const SCHEDULE = [
   { id:0, round:1, court:'1', t1:'red',  t2:'blue'  },
   { id:1, round:1, court:'2', t1:'green',t2:'gold'  },
@@ -416,7 +422,7 @@ function blankMatch(id) {
 }
 
 function defaultState() {
-  return { view:'matches', matches:SCHEDULE.map(m=>blankMatch(m.id)), champMatch:null, bronzeMatch:null, teams: JSON.parse(JSON.stringify(DEFAULT_TEAMS)) };
+  return { view:'matches', matches:SCHEDULE.map(m=>blankMatch(m.id)), champMatch:null, bronzeMatch:null, teams: JSON.parse(JSON.stringify(DEFAULT_TEAMS)), courts:['Court 1','Court 2','Court 3'] };
 }
 
 function loadState() {
@@ -456,8 +462,9 @@ function initSync() {
       const payload = JSON.parse(e.data);
       if (payload.data) {
         state = payload.data;
-        // Migrate: ensure teams always present
+        // Migrate: ensure teams and courts always present
         if (!state.teams) state.teams = JSON.parse(JSON.stringify(DEFAULT_TEAMS));
+        if (!state.courts) state.courts = ['Court 1','Court 2','Court 3'];
         localStorage.setItem('mlp_v3', JSON.stringify(state));
         syncStatus = 'ok'; render();
       } else if (payload.path === '/' && payload.data === null) {
@@ -694,6 +701,32 @@ function toggleMixed(matchId, team) {
 function setView(v) { state.view=v; save(); render(); }
 
 // ═══════════════════════════════════════════════
+//  COURT MANAGEMENT
+// ═══════════════════════════════════════════════
+function updateCourt(idx, name) {
+  if (!state.courts) state.courts = ['Court 1','Court 2','Court 3'];
+  state.courts[idx] = name;
+  save();
+  // Re-render just the courts editor area without full re-render to keep focus
+  const el = document.getElementById('court-name-' + idx);
+  if (el) el.style.borderColor = '#4ade80';
+  setTimeout(() => { const e = document.getElementById('court-name-' + idx); if(e) e.style.borderColor = ''; }, 800);
+  // Sync to firebase but don't re-render (preserves input focus)
+}
+
+function addCourt() {
+  if (!state.courts) state.courts = ['Court 1','Court 2','Court 3'];
+  state.courts.push('Court ' + (state.courts.length + 1));
+  save(); render();
+}
+
+function removeCourt(idx) {
+  if (!state.courts || state.courts.length <= 1) return;
+  state.courts.splice(idx, 1);
+  save(); render();
+}
+
+// ═══════════════════════════════════════════════
 //  TEAM EDITOR
 // ═══════════════════════════════════════════════
 function showTeamEditor(key) {
@@ -877,7 +910,7 @@ function renderMatchCard(def, m, matchId) {
   return `
     <div class="match-card${isLive?' match-live':''}" ${isLive?'id="active-match"':''}>
       <div class="match-top">
-        <span class="match-label">${def.round==='Champ'?'Championship':'Round '+def.round} · Court ${def.court}</span>
+        <span class="match-label">${def.round==='Champ'?'Championship':'Round '+def.round} · ${courtName(def.court)}</span>
         <span class="badge ${badgeClass}">${badge}</span>
       </div>
       <div class="teams-bar">
@@ -983,7 +1016,7 @@ function renderBronzeCard() {
     <div class="round-header" style="color:#cd7f32">🥉 Bronze Match · 3rd Place</div>
     <div class="match-card" style="border-color:#3a2800">
       <div class="match-top" style="background:#1a1400">
-        <span class="match-label" style="color:#7a5a00">3rd Place · Court 2</span>
+        <span class="match-label" style="color:#7a5a00">3rd Place · ${courtName('2')}</span>
         <span class="badge ${badgeClass}">${badge}</span>
       </div>
       <div class="teams-bar">
@@ -1040,7 +1073,7 @@ function renderMatchesView() {
         <div class="round-header" style="color:#cd7f32">🥉 Bronze Match · 3rd Place</div>
         <div class="match-card" style="border-color:#3a2800">
           <div style="padding:20px;text-align:center">
-            <div style="color:#cd7f32;font-size:15px;font-weight:700;margin-bottom:8px">3rd Place Match · Court 2</div>
+            <div style="color:#cd7f32;font-size:15px;font-weight:700;margin-bottom:8px">3rd Place Match · ${courtName('2')}</div>
             <div style="font-size:13px;color:#888">
               <span style="color:${tc(k3)};font-weight:700">${T(k3).name}</span>
               &nbsp;vs&nbsp;
@@ -1059,10 +1092,10 @@ function renderMatchesView() {
     } else {
       const [k1,k2] = getTop2();
       html += `
-        <div class="round-header" style="color:#facc15">🏆 Championship · Court 3</div>
+        <div class="round-header" style="color:#facc15">🏆 Championship · ${courtName('3')}</div>
         <div class="match-card" style="border-color:#3a3000">
           <div style="padding:20px;text-align:center">
-            <div style="color:#facc15;font-size:15px;font-weight:700;margin-bottom:8px">Finalists · Court 3</div>
+            <div style="color:#facc15;font-size:15px;font-weight:700;margin-bottom:8px">Finalists · ${courtName('3')}</div>
             <div style="font-size:13px;color:#888">
               <span style="color:${tc(k1)};font-weight:700">${T(k1).name}</span>
               &nbsp;vs&nbsp;
@@ -1142,6 +1175,28 @@ function renderStandings() {
 
       <div class="card-label" style="margin:16px 12px 0">Schedule</div>
       <div class="card">${schedHtml}</div>
+
+      <div class="card-label" style="margin:16px 12px 0">Courts</div>
+      <div class="card">
+        <div style="padding:12px 14px">
+          ${(state.courts||['Court 1','Court 2','Court 3']).map((name,i)=>`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="font-size:11px;color:#555;font-weight:700;min-width:20px;text-align:right">${i+1}</div>
+              <input
+                id="court-name-${i}"
+                value="${name.replace(/"/g,'&quot;')}"
+                oninput="updateCourt(${i}, this.value)"
+                style="flex:1;padding:9px 12px;background:#252525;border:1px solid #333;border-radius:9px;color:#fff;font-size:13px;font-weight:600;outline:none;transition:border-color 0.3s"
+                placeholder="Court name"
+              />
+              ${(state.courts||[]).length > 1
+                ? `<button onclick="removeCourt(${i})" style="width:32px;height:32px;background:#2a2a2a;border:none;border-radius:8px;color:#666;font-size:16px;cursor:pointer;flex-shrink:0">×</button>`
+                : '<div style="width:32px"></div>'}
+            </div>
+          `).join('')}
+          <button onclick="addCourt()" style="width:100%;margin-top:4px;padding:9px;background:#1e1e1e;border:1px dashed #333;border-radius:9px;color:#666;font-size:13px;font-weight:700;cursor:pointer">+ Add Court</button>
+        </div>
+      </div>
 
       <div class="card-label" style="margin:16px 12px 0">Teams</div>
       <div class="card">
