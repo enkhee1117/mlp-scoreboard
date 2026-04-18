@@ -1776,13 +1776,20 @@ function rrGenerateGames(players, numGames, numCourts) {
   const totalRounds = Math.ceil(numGames / perRound);
 
   function attempt() {
+    // Track how many games each player has played so far — prioritize those behind.
+    const played = Array(P).fill(0);
     const games = [];
     for (let r = 0; r < totalRounds; r++) {
-      const shuffled = rrShuffle([...Array(P).keys()]);
+      // Shuffle first (random tie-break), then stable-sort so least-played come first.
+      const indices = rrShuffle([...Array(P).keys()]);
+      indices.sort((a, b) => played[a] - played[b]);
+      // Players playing this round = first (perRound * 4) by priority, then re-shuffled for random pairings.
+      const playing = rrShuffle(indices.slice(0, perRound * 4));
       for (let g = 0; g < perRound; g++) {
         if (games.length >= numGames) break;
-        const four = shuffled.slice(g * 4, g * 4 + 4);
+        const four = playing.slice(g * 4, g * 4 + 4);
         if (four.length < 4) break;
+        four.forEach(p => played[p]++);
         games.push({
           i: games.length,
           round: r + 1,
@@ -1832,6 +1839,27 @@ function rrUpdatePlayer(idx, name) {
 function rrUpdateConfig(key, val) {
   const n = parseInt(val);
   if (!isNaN(n) && n > 0) { rrState[key] = n; rrSave(); render(); }
+}
+function rrAddPlayer() {
+  if (rrState.games.length > 0) {
+    if (!confirm('Adding a player will clear the current schedule. Continue?')) return;
+    rrState.games = [];
+    rrState.draft = { picks: {} };
+    rrState.semi1 = null; rrState.semi2 = null; rrState.gold = null; rrState.bronze = null;
+  }
+  rrState.players.push('Player ' + (rrState.players.length + 1));
+  rrSave(); render();
+}
+function rrRemovePlayer(idx) {
+  if (rrState.players.length <= 4) { alert('Need at least 4 players.'); return; }
+  if (rrState.games.length > 0) {
+    if (!confirm('Removing a player will clear the current schedule. Continue?')) return;
+    rrState.games = [];
+    rrState.draft = { picks: {} };
+    rrState.semi1 = null; rrState.semi2 = null; rrState.gold = null; rrState.bronze = null;
+  }
+  rrState.players.splice(idx, 1);
+  rrSave(); render();
 }
 function rrGenerateAll() {
   if (rrState.games.some(g => g.done || g.s1>0 || g.s2>0)) {
@@ -2064,11 +2092,15 @@ function rrGameCard(g, gameKey, title) {
 }
 
 function rrRenderSetup() {
+  const canRemove = rrState.players.length > 4;
   const playerRows = rrState.players.map((name, i) => `
-    <div class="rr-player-row">
+    <div class="rr-player-row" style="grid-template-columns:26px 1fr 32px">
       <div class="rr-player-num">${i+1}.</div>
       <input class="rr-player-input" value="${(name||'').replace(/"/g,'&quot;')}"
         oninput="rrUpdatePlayer(${i}, this.value)" placeholder="Player ${i+1}"/>
+      ${canRemove
+        ? `<button onclick="rrRemovePlayer(${i})" style="width:32px;height:32px;background:#2a2a2a;border:none;border-radius:8px;color:#666;font-size:16px;cursor:pointer">×</button>`
+        : '<div></div>'}
     </div>
   `).join('');
 
@@ -2083,8 +2115,13 @@ function rrRenderSetup() {
         <p>${rrState.players.length} players · ${rrState.gamesPerPlayer} games each · ${totalGames} total games</p>
       </div>
 
-      <div class="rr-subsection-label">Players</div>
-      <div style="padding: 0 12px">${playerRows}</div>
+      <div class="rr-subsection-label">Players · ${rrState.players.length}</div>
+      <div style="padding: 0 12px">
+        ${playerRows}
+        <button onclick="rrAddPlayer()" style="width:100%;margin-top:4px;padding:10px;background:#1e1e1e;border:1px dashed #333;border-radius:9px;color:#888;font-size:13px;font-weight:700;cursor:pointer">
+          + Add Player
+        </button>
+      </div>
 
       <div class="rr-subsection-label">Configuration</div>
       <div style="padding: 0 12px">
@@ -2220,13 +2257,24 @@ function rrRenderStandings() {
 }
 
 function rrRenderPlayoffs() {
+  if (rrState.players.length < 8) {
+    return `
+      <div class="rr-page">
+        <div class="rr-coming-soon">
+          <h2>Playoffs unavailable</h2>
+          <p>The playoff draft format needs at least <strong>8 players</strong> (top 4 + draft pool 5-8).</p>
+          <p style="margin-top:8px;color:#666">Currently ${rrState.players.length} players.</p>
+        </div>
+      </div>
+    `;
+  }
   if (!rrRRComplete()) {
     return `
       <div class="rr-page">
         <div class="rr-coming-soon">
           <h2>Playoffs locked</h2>
-          <p>Complete all ${rrState.games.length || 6} round-robin games to unlock draft &amp; playoffs.</p>
-          <p style="margin-top:8px;color:#666">${rrState.games.filter(g=>g.done).length} / ${rrState.games.length || 6} done</p>
+          <p>Complete all ${rrState.games.length || rrTotalGames()} round-robin games to unlock draft &amp; playoffs.</p>
+          <p style="margin-top:8px;color:#666">${rrState.games.filter(g=>g.done).length} / ${rrState.games.length || rrTotalGames()} done</p>
         </div>
       </div>
     `;
