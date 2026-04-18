@@ -1795,8 +1795,103 @@ const RULES = {
   },
 };
 
+const RULES_RR = {
+  en: {
+    title: '\ud83e\udd52 Round Robin Rules',
+    close: 'Got it',
+    sections: [
+      { heading: 'Format', rows: [
+        ['\ud83d\udc65', '<strong>12 players · 6 games each</strong>. Partners and opponents are randomized each round so you rotate through everyone.'],
+        ['\u2696\ufe0f', 'Pairings are <strong>DUPR-balanced</strong>: the top-rated player in each 4-some plays with the lowest-rated so teams are roughly even.'],
+        ['\ud83d\udd01', 'The generator avoids repeat partners and repeat opponents whenever possible across your 6 games.'],
+      ]},
+      { heading: 'Scoring', rows: [
+        ['\ud83c\udfd3', 'Each game is played to the <strong>target agreed on court</strong> (typically 11 or 15, win by 2). Enter your final score after the game.'],
+        ['\u2705', 'Tap a game card, enter both scores, and mark it done \u2014 it syncs live for everyone.'],
+      ]},
+      { heading: 'Standings', rows: [
+        ['\ud83d\udd22', 'Ranked primarily by <strong>Points For (PF)</strong> \u2014 even when you lose, scoring hard matters.'],
+        ['\u2696\ufe0f', 'Tiebreaker 1 \u2014 <strong>Point Differential</strong> (PF \u2212 PA).'],
+        ['\ud83c\udfc6', 'Tiebreaker 2 \u2014 <strong>Games Won</strong>.'],
+        ['\ud83d\udcca', 'Columns: <strong>PF</strong> (points for) \u00b7 <strong>+/\u2212</strong> (differential) \u00b7 <strong>W/G</strong> (wins/games) \u00b7 <strong>PA</strong> (points against).'],
+      ]},
+      { heading: 'Playoffs \u2014 Draft Pick', rows: [
+        ['\ud83e\udd47', 'After all round-robin games, the <strong>top 4</strong> in standings advance.'],
+        ['\ud83e\udd1d', 'Each top-4 player <strong>chooses a partner</strong> from players ranked 5\u20138. #1 picks first, then #2, #3, #4.'],
+        ['\ud83c\udfbe', '<strong>Semifinals</strong>: Team #1 vs Team #4, Team #2 vs Team #3.'],
+        ['\ud83e\udd49', '<strong>Bronze Match</strong>: the two semifinal losers play for 3rd.'],
+        ['\ud83e\udd47', '<strong>Gold Match</strong>: the two semifinal winners play for the championship.'],
+      ]},
+      { heading: 'Tips', rows: [
+        ['\ud83d\udc64', 'Tap the \u2699 icon and sign in as yourself so your next game and standing show up on a personal card.'],
+        ['\ud83d\udc40', 'In <em>Player</em> view you only see your own matches \u2014 makes it easier to find your next court.'],
+      ]},
+    ],
+  },
+  ko: {
+    title: '\ud83e\udd52 \ub77c\uc6b4\ub4dc \ub85c\ube48 \uaddc\uce59',
+    close: '\ud655\uc778',
+    sections: [
+      { heading: '\ud615\uc2dd', rows: [
+        ['\ud83d\udc65', '<strong>12\uba85 \u00b7 \uac01 6\uacbd\uae30</strong>. \ud30c\ud2b8\ub108\uc640 \uc0c1\ub300\ub97c \ub9e4 \ub77c\uc6b4\ub4dc\ub9c8\ub2e4 \ubb34\uc791\uc704\ub85c \uad50\uccb4\ud569\ub2c8\ub2e4.'],
+        ['\u2696\ufe0f', '\ud30c\ud2b8\ub108 \ubc30\uc815\uc740 <strong>DUPR \uade0\ud615</strong>\uc744 \uace0\ub824 \u2014 \uac00\uc7a5 \ub192\uc740 \uc120\uc218\uc640 \uac00\uc7a5 \ub0ae\uc740 \uc120\uc218\uac00 \ud55c \ud300\uc774 \ub429\ub2c8\ub2e4.'],
+        ['\ud83d\udd01', '6\uacbd\uae30 \ub3d9\uc548 \uac00\ub2a5\ud55c \ud55c \uac19\uc740 \ud30c\ud2b8\ub108\u00b7\uc0c1\ub300\ub97c \ud53c\ud569\ub2c8\ub2e4.'],
+      ]},
+      { heading: '\uc810\uc218', rows: [
+        ['\ud83c\udfd3', '\uacbd\uae30\ub2f9 \ucf54\ud2b8\uc5d0\uc11c \ud569\uc758\ud55c \uc810\uc218\uae4c\uc9c0 (\ubcf4\ud1b5 11 \ub610\ub294 15, 2\uc810 \ucc28). \uac8c\uc784 \ud6c4 \ucd5c\uc885 \uc810\uc218\ub97c \uc785\ub825\ud558\uc138\uc694.'],
+        ['\u2705', '\uac8c\uc784 \uce74\ub4dc\ub97c \ud0ed\ud558\uace0 \uc810\uc218 \uc785\ub825 \ud6c4 \uc644\ub8cc\ub85c \ud45c\uc2dc\ud558\uba74 \uc2e4\uc2dc\uac04 \ub3d9\uae30\ud654\ub429\ub2c8\ub2e4.'],
+      ]},
+      { heading: '\uc21c\uc704', rows: [
+        ['\ud83d\udd22', '<strong>\ub4dd\uc810(PF)</strong>\uc73c\ub85c 1\ucc28 \uc21c\uc704 \uacb0\uc815 \u2014 \uc9c0\ub354\ub77c\ub3c4 \ub9ce\uc774 \ub4dd\uc810\ud558\ub294 \uac83\uc774 \uc911\uc694\ud569\ub2c8\ub2e4.'],
+        ['\u2696\ufe0f', '\ud0c0\uc774\ube0c\ub808\uc774\ucee4 1 \u2014 <strong>\ub4dd\uc2e4\uc810 \ucc28(+/\u2212)</strong>.'],
+        ['\ud83c\udfc6', '\ud0c0\uc774\ube0c\ub808\uc774\ucee4 2 \u2014 <strong>\uc2b9\ub9ac \uac8c\uc784 \uc218</strong>.'],
+        ['\ud83d\udcca', '\uc5f4: <strong>PF</strong>(\ub4dd\uc810) \u00b7 <strong>+/\u2212</strong>(\ub4dd\uc2e4\uc810) \u00b7 <strong>W/G</strong>(\uc2b9/\uacbd\uae30) \u00b7 <strong>PA</strong>(\uc2e4\uc810).'],
+      ]},
+      { heading: '\ud50c\ub808\uc774\uc624\ud504 \u2014 \ub4dc\ub798\ud504\ud2b8 \ud53d', rows: [
+        ['\ud83e\udd47', '\ub77c\uc6b4\ub4dc \ub85c\ube48 \uc885\ub8cc \ud6c4 \uc21c\uc704 <strong>\uc0c1\uc704 4\uba85</strong>\uc774 \uc9c4\ucd9c.'],
+        ['\ud83e\udd1d', '\uc0c1\uc704 4\uba85\uc774 5\u20138\uc704 \uc911\uc5d0\uc11c <strong>\ud30c\ud2b8\ub108\ub97c \ub4dc\ub798\ud504\ud2b8</strong>. 1\uc704 \u2192 2\uc704 \u2192 3\uc704 \u2192 4\uc704 \uc21c\uc11c.'],
+        ['\ud83c\udfbe', '<strong>\uc900\uacb0\uc2b9</strong>: 1\uc704 \ud300 vs 4\uc704 \ud300, 2\uc704 \ud300 vs 3\uc704 \ud300.'],
+        ['\ud83e\udd49', '<strong>\ub3d9\uba54\ub2ec\uc804</strong>: \uc900\uacb0\uc2b9 \ud328\uc790\ub07c\ub9ac \ub300\uacb0.'],
+        ['\ud83e\udd47', '<strong>\uae08\uba54\ub2ec\uc804</strong>: \uc900\uacb0\uc2b9 \uc2b9\uc790\ub07c\ub9ac \ub300\uacb0.'],
+      ]},
+    ],
+  },
+  zh: {
+    title: '\ud83e\udd52 \u5faa\u73af\u8d5b\u89c4\u5219',
+    close: '\u660e\u767d\u4e86',
+    sections: [
+      { heading: '\u8d5b\u5236', rows: [
+        ['\ud83d\udc65', '<strong>12\u4eba \u00b7 \u6bcf\u4eba6\u573a</strong>\u3002\u6bcf\u8f6e\u968f\u673a\u6253\u4e71\u642d\u6863\u548c\u5bf9\u624b\u3002'],
+        ['\u2696\ufe0f', '\u914d\u5bf9\u91c7\u7528<strong>DUPR\u5747\u8861</strong>\uff1a\u6bcf4\u4eba\u4e2d\u6700\u9ad8\u5206\u4e0e\u6700\u4f4e\u5206\u642d\u6863\uff0c\u529b\u91cf\u5927\u81f4\u76f8\u5f53\u3002'],
+        ['\ud83d\udd01', '\u7cfb\u7edf\u4f1a\u5c3d\u91cf\u907f\u514d\u91cd\u590d\u642d\u6863\u548c\u91cd\u590d\u5bf9\u624b\u3002'],
+      ]},
+      { heading: '\u8ba1\u5206', rows: [
+        ['\ud83c\udfd3', '\u6bcf\u573a\u6bd4\u8d5b\u6253\u5230\u73b0\u573a\u7ea6\u5b9a\u5206\u6570\uff08\u901a\u5e38\u4e3a11\u621615\u5206\uff0c\u9886\u51482\u5206\u80dc\u51fa\uff09\u3002\u8d5b\u540e\u8f93\u5165\u6700\u7ec8\u6bd4\u5206\u3002'],
+        ['\u2705', '\u70b9\u51fb\u6bd4\u8d5b\u5361\u7247\u8f93\u5165\u5206\u6570\u5e76\u6807\u8bb0\u4e3a\u5b8c\u6210\uff0c\u4f1a\u5b9e\u65f6\u540c\u6b65\u3002'],
+      ]},
+      { heading: '\u6392\u540d', rows: [
+        ['\ud83d\udd22', '\u4ee5<strong>\u5f97\u5206\uff08PF\uff09</strong>\u4f5c\u4e3a\u4e3b\u8981\u6392\u540d\u4f9d\u636e \u2014 \u8f93\u4e86\u4e5f\u8981\u7528\u529b\u5f97\u5206\u3002'],
+        ['\u2696\ufe0f', '\u4e00\u9644 \u2014 <strong>\u51c0\u80dc\u5206\uff08+/\u2212\uff09</strong>.'],
+        ['\ud83c\udfc6', '\u4e8c\u9644 \u2014 <strong>\u80dc\u573a\u6570</strong>.'],
+        ['\ud83d\udcca', '\u5217\u8bf4\u660e\uff1a<strong>PF</strong>\u5f97\u5206 \u00b7 <strong>+/\u2212</strong>\u51c0\u80dc\u5206 \u00b7 <strong>W/G</strong>\u80dc/\u8d5b \u00b7 <strong>PA</strong>\u5931\u5206\u3002'],
+      ]},
+      { heading: '\u5b63\u540e\u8d5b \u2014 \u9009\u79c0\u642d\u6863', rows: [
+        ['\ud83e\udd47', '\u5faa\u73af\u8d5b\u7ed3\u675f\u540e\uff0c\u6392\u540d<strong>\u524d4\u540d</strong>\u664b\u7ea7\u3002'],
+        ['\ud83e\udd1d', '\u524d4\u540d\u4ece\u7b2c5\u20138\u540d\u4e2d<strong>\u9009\u62e9\u642d\u6863</strong>\uff1a\u7b2c1\u540d\u5148\u9009\uff0c\u7136\u540e\u7b2c2\u30013\u30014\u540d\u4f9d\u6b21\u3002'],
+        ['\ud83c\udfbe', '<strong>\u534a\u51b3\u8d5b</strong>\uff1a\u7b2c1\u5bf94\uff0c\u7b2c2\u5bf93\u3002'],
+        ['\ud83e\udd49', '<strong>\u94dc\u724c\u8d5b</strong>\uff1a\u4e24\u652f\u534a\u51b3\u8d25\u8005\u4e89\u593a\u4e09\u7b49\u3002'],
+        ['\ud83e\udd47', '<strong>\u91d1\u724c\u8d5b</strong>\uff1a\u4e24\u652f\u534a\u51b3\u80dc\u8005\u4e89\u593a\u51a0\u519b\u3002'],
+      ]},
+    ],
+  },
+};
+
+function currentRulesSet() {
+  return tournamentMode === 'rr' ? RULES_RR : RULES;
+}
+
 function rulesBodyHtml(lang) {
-  const r = RULES[lang];
+  const r = currentRulesSet()[lang];
   return r.sections.map(sec => {
     const heading = `<h3>${sec.heading}</h3>`;
     if (sec.pts) {
@@ -1816,9 +1911,10 @@ function setRulesLang(lang) {
   const body = document.getElementById('rules-body');
   const title = document.getElementById('rules-title');
   const closeBtn = document.getElementById('rules-close-btn');
+  const R = currentRulesSet();
   if (body) body.innerHTML = rulesBodyHtml(lang);
-  if (title) title.textContent = RULES[lang].title;
-  if (closeBtn) closeBtn.textContent = RULES[lang].close;
+  if (title) title.textContent = R[lang].title;
+  if (closeBtn) closeBtn.textContent = R[lang].close;
   ['en','ko','zh'].forEach(l => {
     const btn = document.getElementById('lang-btn-'+l);
     if (btn) btn.className = 'lang-btn' + (l===lang?' lang-active':'');
@@ -1838,9 +1934,9 @@ function showRules() {
         <button id="lang-btn-ko" class="lang-btn${rulesLang==='ko'?' lang-active':''}" onclick="setRulesLang('ko')">한국어</button>
         <button id="lang-btn-zh" class="lang-btn${rulesLang==='zh'?' lang-active':''}" onclick="setRulesLang('zh')">中文</button>
       </div>
-      <h2 id="rules-title">${RULES[rulesLang].title}</h2>
+      <h2 id="rules-title">${currentRulesSet()[rulesLang].title}</h2>
       <div id="rules-body">${rulesBodyHtml(rulesLang)}</div>
-      <button id="rules-close-btn" class="rules-close" onclick="document.getElementById('rules-overlay').remove()">${RULES[rulesLang].close}</button>
+      <button id="rules-close-btn" class="rules-close" onclick="document.getElementById('rules-overlay').remove()">${currentRulesSet()[rulesLang].close}</button>
     </div>
   `;
   document.body.appendChild(el);
