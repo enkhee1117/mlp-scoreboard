@@ -1545,6 +1545,11 @@ function styleBar() {
   `;
 }
 
+const _escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => _escMap[c]);
+}
+
 // Brief bottom-center confirmation — fades in, fades out.
 let toastTimer = null;
 function toast(msg, ms) {
@@ -2099,8 +2104,14 @@ const RR_DEFAULT_PLAYERS = [
   { name: 'Shilan',    dupr: 3.60 },
 ];
 
-// Helpers so the rest of the code can treat players uniformly.
+// Returns HTML-escaped name — safe to interpolate into innerHTML directly.
 function rrPlayerName(i) {
+  const p = rrState && rrState.players && rrState.players[i];
+  if (!p) return '?';
+  const raw = (typeof p === 'string') ? p : (p.name || `Player ${i+1}`);
+  return escapeHtml(raw);
+}
+function rrPlayerNameRaw(i) {
   const p = rrState && rrState.players && rrState.players[i];
   if (!p) return '?';
   return (typeof p === 'string') ? p : (p.name || `Player ${i+1}`);
@@ -2392,7 +2403,7 @@ function showSettings() {
         return `
           <div class="settings-row">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:700;color:#eee;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(t.name||'Round Robin').replace(/</g,'&lt;')}</div>
+              <div style="font-weight:700;color:#eee;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.name||'Round Robin')}</div>
               <div style="font-size:11px;color:#777;margin-top:2px">${when} · ${(t.players||[]).length} players</div>
             </div>
             <button onclick="viewArchived('${t.id}')" style="background:#2a2a2a;border:none;color:#eee;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px">View</button>
@@ -2441,7 +2452,7 @@ function showSettings() {
         <div class="settings-section-label">Tournament</div>
         <div class="settings-row" style="cursor:default">
           <div style="color:#eee;font-weight:700;flex-shrink:0;margin-right:10px">Name</div>
-          <input class="select-input" style="flex:1;min-width:0" value="${(rrState.name||'').replace(/"/g,'&quot;')}" onchange="rrUpdateName(this.value); showSettings()"/>
+          <input class="select-input" style="flex:1;min-width:0" value="${escapeHtml(rrState.name||'')}" onchange="rrUpdateName(this.value); showSettings()"/>
         </div>
         ${viewMode === 'player' ? '' : `
           <div class="settings-row" onclick="startNewTournament()">
@@ -2515,7 +2526,7 @@ function viewArchived(id) {
     <div class="settings-sheet" onclick="event.stopPropagation()">
       <div class="settings-handle"></div>
       <div style="text-align:center;padding:0 0 10px">
-        <div style="font-size:18px;font-weight:800;color:#fff">${(t.name||'Round Robin').replace(/</g,'&lt;')}</div>
+        <div style="font-size:18px;font-weight:800;color:#fff">${escapeHtml(t.name||'Round Robin')}</div>
         <div style="font-size:12px;color:#777;margin-top:2px">${when} · ${(t.players||[]).length} players · ${(t.games||[]).filter(g=>g.done).length} games played</div>
       </div>
       <div class="rr-standings-row header-row">
