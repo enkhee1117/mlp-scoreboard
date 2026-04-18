@@ -2908,7 +2908,11 @@ function rrGameCard(g, gameKey, title) {
 
   const w1 = g.done && g.winner==='t1';
   const w2 = g.done && g.winner==='t2';
-  const readOnly = viewMode === 'player';
+  const inThisGame = typeof myIdentity === 'number' && (
+    (g.team1 || []).indexOf(myIdentity) !== -1 ||
+    (g.team2 || []).indexOf(myIdentity) !== -1
+  );
+  const readOnly = viewMode === 'player' && !inThisGame;
 
   let scoreHtml;
   if (g.done) {
@@ -3261,23 +3265,28 @@ function rrRenderPlayoffs() {
       </div>`;
     }).join('');
 
-    const pickerHtml = available.length === 0 ? '' : `
+    const canPick = viewMode === 'organizer' || (typeof myIdentity === 'number' && myIdentity === top4[nextRank].idx);
+    const pickerHtml = available.length === 0 ? '' : (canPick ? `
       <div class="card" style="margin-top:16px">
         <div class="card-label" style="padding:12px 14px 4px">
-          ${top4[nextRank].name} (rank ${nextRank+1}) · Pick your partner
+          ${viewMode === 'organizer' ? `Pick #${nextRank+1} \u2014 ` : ''}${top4[nextRank].name} (rank ${nextRank+1}) \u00b7 Pick partner
         </div>
         <div style="padding:0 12px 12px">
           ${available.map(p => {
             const rank = st.indexOf(p) + 1;
             return `<button onclick="rrDraftPick(${nextRank}, ${p.idx})"
               style="display:block;width:100%;margin-bottom:8px;padding:14px;background:#1e1e1e;border:1px solid #2a2a2a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;text-align:left">
-              <span style="color:#60a5fa">Rank ${rank}</span> · ${p.name}
-              <span style="float:right;color:#666;font-size:12px">${p.gw}W · ${p.diff>0?'+':''}${p.diff}</span>
+              <span style="color:#60a5fa">Rank ${rank}</span> \u00b7 ${p.name}
+              <span style="float:right;color:#666;font-size:12px">${p.gw}W \u00b7 ${p.diff>0?'+':''}${p.diff}</span>
             </button>`;
           }).join('')}
         </div>
       </div>
-    `;
+    ` : `
+      <div class="card" style="margin-top:16px;padding:16px;text-align:center;color:#9ab6dd">
+        \u23f3 Waiting for <strong style="color:#fff">${top4[nextRank].name}</strong> (rank ${nextRank+1}) to pick a partner\u2026
+      </div>
+    `);
 
     draftHtml = `
       <div class="card-label" style="margin:16px 12px 0">Team Draft</div>
