@@ -2414,9 +2414,28 @@ function renderRR() {
   }, 80);
 }
 
-render();
-initSync();
-rrInitSync();
+window.addEventListener('error', (e) => {
+  const app = document.getElementById('app');
+  if (app && !app.innerHTML) {
+    app.innerHTML = `<div style="padding:20px;color:#f87171;font-family:monospace;font-size:12px;line-height:1.6">
+      <strong style="color:#fff;font-size:14px">Error loading app</strong><br><br>
+      ${(e.message||'').replace(/</g,'&lt;')}<br>
+      <span style="color:#888">${(e.filename||'').replace(/</g,'&lt;')}:${e.lineno||''}:${e.colno||''}</span>
+    </div>`;
+  }
+});
+
+try {
+  render();
+  initSync();
+  rrInitSync();
+} catch (err) {
+  document.getElementById('app').innerHTML = `<div style="padding:20px;color:#f87171;font-family:monospace;font-size:12px;line-height:1.6">
+    <strong style="color:#fff;font-size:14px">Startup error</strong><br><br>
+    ${(err.message||'').replace(/</g,'&lt;')}<br><br>
+    <pre style="color:#888;white-space:pre-wrap;font-size:11px">${(err.stack||'').replace(/</g,'&lt;')}</pre>
+  </div>`;
+}
 
 // Inject the floating rules button once
 const fab = document.createElement('button');
