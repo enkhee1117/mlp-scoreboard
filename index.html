@@ -35,6 +35,17 @@
       font-size: 11px; font-weight: 700; color: #555;
       text-transform: uppercase; letter-spacing: 1.5px;
     }
+    .round-header .round-cheer {
+      display: block;
+      margin-top: 4px;
+      font-size: 11px; font-weight: 700;
+      text-transform: none; letter-spacing: 0.3px;
+      color: #60a5fa;
+    }
+    .round-header.penultimate { color: #9ca3af; }
+    .round-header.penultimate .round-cheer { color: #fbbf24; }
+    .round-header.final { color: #fbbf24; font-size: 13px; }
+    .round-header.final .round-cheer { color: #f97316; font-size: 12px; }
 
     /* ── MATCH CARD ── */
     .match-card {
@@ -3139,13 +3150,24 @@ function rrRenderGames() {
     rounds[r].push({ g, i });
   });
   const hasVisible = Object.keys(rounds).length > 0;
+  const totalRounds = Math.max(1, ...rrState.games.map(g => g.round || 1));
   const gamesHtml = hasVisible ? Object.keys(rounds).sort((a,b)=>a-b).map(r => {
+    const rNum = Number(r);
     const rGames = rounds[r];
-    const allRGames = pool.filter(g => (g.round||1) === Number(r));
+    const allRGames = pool.filter(g => (g.round||1) === rNum);
     const done = allRGames.filter(g => g.done).length;
     const inner = rGames.map(x => rrGameCard(x.g, String(x.i), `Game ${x.i+1}`)).join('');
+    const isFinal = rNum === totalRounds;
+    const isPenultimate = totalRounds >= 3 && rNum === totalRounds - 1;
+    const isHalfway = totalRounds >= 4 && rNum === Math.ceil(totalRounds / 2);
+    let cheer = '';
+    if (isFinal) cheer = 'Final round · you got this 🤜🏻';
+    else if (isPenultimate) cheer = 'One more after this 💪';
+    else if (isHalfway) cheer = 'Halfway there — keep it rolling';
+    const cheerHtml = cheer ? `<span class="round-cheer">${cheer}</span>` : '';
+    const cls = isFinal ? 'round-header final' : (isPenultimate ? 'round-header penultimate' : 'round-header');
     return `
-      <div class="round-header">Round ${r} · ${done}/${allRGames.length} done</div>
+      <div class="${cls}">Round ${rNum} · ${done}/${allRGames.length} done${cheerHtml}</div>
       ${inner}
     `;
   }).join('') : `
