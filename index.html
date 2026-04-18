@@ -2329,16 +2329,21 @@ function showWelcome() {
   el.id = 'welcome-overlay';
   el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
   el.innerHTML = `
-    <div style="background:#141414;border-radius:18px;width:100%;max-width:460px;padding:24px 20px 20px;border:1px solid #2a2a2a;box-shadow:0 8px 32px rgba(0,0,0,0.6)">
-      <div style="text-align:center;margin-bottom:18px">
-        <div style="font-size:44px;margin-bottom:6px">\ud83e\udd52</div>
-        <div style="color:#fff;font-size:20px;font-weight:800;letter-spacing:0.3px">Welcome to Terry\u2019s Women\u2019s Tourney!</div>
-        <div style="color:#9ab6dd;font-size:13px;font-weight:600;margin-top:6px">Congrats on joining \u2014 let\u2019s get you set up.</div>
+    <div style="position:relative;background:#141414;border-radius:18px;width:100%;max-width:460px;border:1px solid #2a2a2a;box-shadow:0 8px 32px rgba(0,0,0,0.6);overflow:hidden">
+      <div style="position:relative;height:220px;background-image:url('IMG_7693.png');background-size:cover;background-position:center top;background-repeat:no-repeat">
+        <div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(20,20,20,0) 0%, rgba(20,20,20,0.55) 70%, #141414 100%)"></div>
+        <div style="position:absolute;left:0;right:0;bottom:10px;text-align:center;padding:0 16px">
+          <div style="font-size:40px;margin-bottom:4px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6))">\ud83e\udd52</div>
+          <div style="color:#fff;font-size:20px;font-weight:800;letter-spacing:0.3px;text-shadow:0 2px 8px rgba(0,0,0,0.8)">Welcome to Terry\u2019s Women\u2019s Tourney!</div>
+        </div>
       </div>
-      <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin:14px 0 10px">Who are you?</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${cards}</div>
-      <div style="text-align:center;margin-top:16px">
-        <button onclick="dismissWelcome()" style="background:transparent;border:none;color:#666;font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline">Skip for now</button>
+      <div style="padding:12px 20px 20px">
+        <div style="color:#9ab6dd;font-size:13px;font-weight:600;text-align:center;margin-bottom:10px">Congrats on joining \u2014 let\u2019s get you set up.</div>
+        <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin:14px 0 10px">Who are you?</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${cards}</div>
+        <div style="text-align:center;margin-top:16px">
+          <button onclick="dismissWelcome()" style="background:transparent;border:none;color:#666;font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline">Skip for now</button>
+        </div>
       </div>
     </div>
   `;
