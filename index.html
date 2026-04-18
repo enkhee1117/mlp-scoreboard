@@ -1426,13 +1426,10 @@ function render() {
     <div class="sync-bar sync-pending" id="sync-status-bar"></div>
   `;
   const body = currentView==='matches' ? renderMatchesView() : renderStandings();
+  const prevScroll = window.scrollY;
   document.getElementById('app').innerHTML = nav + body;
   renderSyncBar();
-  // Scroll to active match
-  setTimeout(()=>{
-    const el = document.getElementById('active-match');
-    if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
-  }, 80);
+  window.scrollTo(0, prevScroll);
 }
 
 // ═══════════════════════════════════════════════
@@ -2422,12 +2419,10 @@ function renderRR() {
   else if (rrView === 'playoffs') body = rrRenderPlayoffs();
   else body = rrRenderSetup();
 
+  const prevScroll = window.scrollY;
   document.getElementById('app').innerHTML = nav + body;
   renderSyncBar();
-  setTimeout(() => {
-    const el = document.getElementById('active-match');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 80);
+  window.scrollTo(0, prevScroll);
 }
 
 window.addEventListener('error', (e) => {
