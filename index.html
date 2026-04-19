@@ -2604,8 +2604,10 @@ function showSettings() {
       <div class="settings-handle"></div>
       <button onclick="hideSettings()" aria-label="Close" style="position:absolute;top:10px;right:12px;background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;width:34px;height:34px;border-radius:50%;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2">\u00d7</button>
 
-      <div class="settings-section-label">Tournament Style</div>
-      <div style="display:flex;gap:6px">${modeButtons}</div>
+      ${viewMode === 'player' ? '' : `
+        <div class="settings-section-label">Tournament Style</div>
+        <div style="display:flex;gap:6px">${modeButtons}</div>
+      `}
 
       <div class="settings-section-label">View Mode</div>
       <div style="display:flex;gap:6px">${viewButtons}</div>
