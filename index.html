@@ -3478,6 +3478,10 @@ function ppaMigrate(s) {
     t1: g.t1|0, t2: g.t2|0, s1: g.s1|0, s2: g.s2|0,
     done: !!g.done, winner: g.winner || null,
   }));
+  s.semi1 = s.semi1 || null;
+  s.semi2 = s.semi2 || null;
+  s.gold = s.gold || null;
+  s.bronze = s.bronze || null;
   return s;
 }
 function loadPPAState() {
@@ -3496,6 +3500,10 @@ function loadPPAState() {
     pools: 1,
     numCourts: 2,
     games: [],
+    semi1: null,
+    semi2: null,
+    gold: null,
+    bronze: null,
   };
 }
 let ppaState = loadPPAState();
@@ -3551,7 +3559,11 @@ function ppaTeamPlayers(i) {
 function ppaAddTeam() {
   const n = ppaState.teams.length + 1;
   ppaState.teams.push({ name: '', p1: 'Player ' + (n*2-1), p2: 'Player ' + (n*2) });
-  if (ppaState.games.length) ppaState.games = [];
+  if (ppaState.games.length) {
+    ppaState.games = [];
+    ppaState.semi1 = null; ppaState.semi2 = null;
+    ppaState.gold = null; ppaState.bronze = null;
+  }
   ppaSave(); render();
 }
 function ppaRemoveTeam(idx) {
@@ -3559,6 +3571,8 @@ function ppaRemoveTeam(idx) {
   if (ppaState.games.length && !confirm('Removing a team will clear the schedule. Continue?')) return;
   ppaState.teams.splice(idx, 1);
   ppaState.games = [];
+  ppaState.semi1 = null; ppaState.semi2 = null;
+  ppaState.gold = null; ppaState.bronze = null;
   ppaSave(); render();
 }
 function ppaUpdateTeam(idx, field, value) {
@@ -3574,21 +3588,27 @@ function ppaUpdateConfig(key, value) {
   ppaSave(); render();
 }
 function ppaUpdateName(name) { ppaState.name = String(name || '').slice(0, 60); ppaSave(); }
-function ppaGetGame(idx) { return ppaState.games[Number(idx)] || null; }
-function ppaAdj(idx, team, delta) {
-  const g = ppaGetGame(idx); if (!g || g.done) return;
+function ppaGetGame(key) {
+  if (key === 'semi1') return ppaState.semi1;
+  if (key === 'semi2') return ppaState.semi2;
+  if (key === 'gold') return ppaState.gold;
+  if (key === 'bronze') return ppaState.bronze;
+  return ppaState.games[parseInt(key)] || null;
+}
+function ppaAdj(key, team, delta) {
+  const g = ppaGetGame(key); if (!g || g.done) return;
   if (team === 1) g.s1 = Math.max(0, g.s1 + delta);
   else g.s2 = Math.max(0, g.s2 + delta);
   ppaSave(); render();
 }
-function ppaSetScoreInline(idx, team, value) {
-  const g = ppaGetGame(idx); if (!g || g.done) return;
+function ppaSetScoreInline(key, team, value) {
+  const g = ppaGetGame(key); if (!g || g.done) return;
   const n = Math.max(0, parseInt(value) || 0);
   if (team === 1) g.s1 = n; else g.s2 = n;
   ppaSave(); render();
 }
-function ppaMarkDone(idx) {
-  const g = ppaGetGame(idx); if (!g) return;
+function ppaMarkDone(key) {
+  const g = ppaGetGame(key); if (!g) return;
   if (g.s1 === g.s2) { alert("Scores tied — can't complete."); return; }
   const hi = Math.max(g.s1, g.s2);
   const margin = Math.abs(g.s1 - g.s2);
@@ -3598,22 +3618,75 @@ function ppaMarkDone(idx) {
   g.done = true;
   g.winner = g.s1 > g.s2 ? 't1' : 't2';
   launchConfetti();
+  if (key === 'semi1' || key === 'semi2') ppaMaybeAdvancePlayoffs();
   ppaSave(); render();
 }
-function ppaUndoGame(idx) {
-  const g = ppaGetGame(idx); if (!g) return;
+function ppaUndoGame(key) {
+  const g = ppaGetGame(key); if (!g) return;
   g.done = false; g.winner = null;
+  if (key === 'semi1' || key === 'semi2') {
+    ppaState.gold = null; ppaState.bronze = null;
+  }
   ppaSave(); render();
 }
-function ppaResetGame(idx) {
-  const g = ppaGetGame(idx); if (!g) return;
+function ppaResetGame(key) {
+  const g = ppaGetGame(key); if (!g) return;
   if (!confirm('Reset this game\u2019s score?')) return;
   g.s1 = 0; g.s2 = 0; g.done = false; g.winner = null;
+  if (key === 'semi1' || key === 'semi2') {
+    ppaState.gold = null; ppaState.bronze = null;
+  }
   ppaSave(); render();
 }
 function ppaResetAll() {
   if (!confirm('Reset the whole PPA tournament? All scores will be cleared.')) return;
   ppaState.games.forEach(g => { g.s1 = 0; g.s2 = 0; g.done = false; g.winner = null; });
+  ppaState.semi1 = null; ppaState.semi2 = null;
+  ppaState.gold = null; ppaState.bronze = null;
+  ppaSave(); render();
+}
+function ppaRRComplete() {
+  return ppaState.games.length > 0 && ppaState.games.every(g => g.done);
+}
+function ppaPlayoffsSupported() {
+  const poolCount = Math.max(1, Math.min(ppaState.pools || 1, ppaState.teams.length));
+  if (poolCount === 1) return ppaState.teams.length >= 4;
+  if (poolCount === 2) return ppaState.teams.length >= 4;
+  return false;
+}
+function ppaBuildPlayoffs() {
+  if (!ppaRRComplete() || !ppaPlayoffsSupported()) return;
+  const byPool = ppaStandings();
+  const poolCount = Math.max(1, Math.min(ppaState.pools || 1, ppaState.teams.length));
+  if (poolCount === 1) {
+    const st = byPool[0] || [];
+    if (st.length < 4) return;
+    ppaState.semi1 = { court: 1, t1: st[0].idx, t2: st[3].idx, s1: 0, s2: 0, done: false, winner: null, label: 'Semi 1 \u00b7 1 vs 4' };
+    ppaState.semi2 = { court: 2, t1: st[1].idx, t2: st[2].idx, s1: 0, s2: 0, done: false, winner: null, label: 'Semi 2 \u00b7 2 vs 3' };
+  } else {
+    const a = byPool[0] || [], b = byPool[1] || [];
+    if (a.length < 2 || b.length < 2) return;
+    ppaState.semi1 = { court: 1, t1: a[0].idx, t2: b[1].idx, s1: 0, s2: 0, done: false, winner: null, label: 'Semi 1 \u00b7 A1 vs B2' };
+    ppaState.semi2 = { court: 2, t1: b[0].idx, t2: a[1].idx, s1: 0, s2: 0, done: false, winner: null, label: 'Semi 2 \u00b7 B1 vs A2' };
+  }
+  ppaState.gold = null;
+  ppaState.bronze = null;
+}
+function ppaMaybeAdvancePlayoffs() {
+  const s1 = ppaState.semi1, s2 = ppaState.semi2;
+  if (s1 && s1.done && s2 && s2.done) {
+    const s1W = s1.winner === 't1' ? s1.t1 : s1.t2;
+    const s1L = s1.winner === 't1' ? s1.t2 : s1.t1;
+    const s2W = s2.winner === 't1' ? s2.t1 : s2.t2;
+    const s2L = s2.winner === 't1' ? s2.t2 : s2.t1;
+    if (!ppaState.gold)   ppaState.gold   = { court: 1, t1: s1W, t2: s2W, s1: 0, s2: 0, done: false, winner: null, label: 'Gold Medal' };
+    if (!ppaState.bronze) ppaState.bronze = { court: 2, t1: s1L, t2: s2L, s1: 0, s2: 0, done: false, winner: null, label: 'Bronze Medal' };
+  }
+}
+function ppaResetPlayoffs() {
+  if (!confirm('Reset playoff bracket? Semi and medal scores will be cleared.')) return;
+  ppaState.semi1 = null; ppaState.semi2 = null;
+  ppaState.gold = null; ppaState.bronze = null;
   ppaSave(); render();
 }
 
@@ -3665,6 +3738,8 @@ function ppaGenerateAll() {
     });
   });
   ppaState.games = games;
+  ppaState.semi1 = null; ppaState.semi2 = null;
+  ppaState.gold = null; ppaState.bronze = null;
   ppaSave();
   ppaSetView('games');
 }
@@ -3691,7 +3766,7 @@ function ppaStandings() {
 }
 function ppaPoolLabel(p) { return ppaState.pools > 1 ? `Pool ${String.fromCharCode(65 + p)}` : ''; }
 
-function ppaGameCard(g) {
+function ppaGameCard(g, key, title) {
   let badge, badgeClass;
   if (g.done) { badge='Final'; badgeClass='badge-done'; }
   else if (g.s1>0 || g.s2>0) { badge='Live'; badgeClass='badge-live'; }
@@ -3706,31 +3781,31 @@ function ppaGameCard(g) {
         <div class="score-sep">–</div>
         <div class="score-side right" style="justify-content:center"><div class="score-num-big" style="color:${w2?'#f472b6':'#fff'}">${g.s2}</div></div>
       </div>
-      <div style="text-align:center;margin-top:4px"><button class="undo-btn" onclick="ppaUndoGame(${g.i})">Undo</button></div>`;
+      <div style="text-align:center;margin-top:4px"><button class="undo-btn" onclick="ppaUndoGame('${key}')">Undo</button></div>`;
   } else {
     scoreHtml = `
       <div class="score-row">
         <div class="score-side">
-          <button class="score-tap" onclick="ppaAdj(${g.i},1,1)" style="color:#60a5fa">+</button>
+          <button class="score-tap" onclick="ppaAdj('${key}',1,1)" style="color:#60a5fa">+</button>
           <input class="score-num-big" type="number" min="0" value="${g.s1}"
-            data-focus-key="ppa-${g.i}-1"
-            onchange="ppaSetScoreInline(${g.i},1,this.value)"
+            data-focus-key="ppa-${key}-1"
+            onchange="ppaSetScoreInline('${key}',1,this.value)"
             onfocus="this.select()" inputmode="numeric" pattern="[0-9]*"
             style="color:#60a5fa"/>
-          <button class="score-tap minus" onclick="ppaAdj(${g.i},1,-1)">−</button>
+          <button class="score-tap minus" onclick="ppaAdj('${key}',1,-1)">−</button>
         </div>
         <div class="score-sep">–</div>
         <div class="score-side right">
-          <button class="score-tap minus" onclick="ppaAdj(${g.i},2,-1)">−</button>
+          <button class="score-tap minus" onclick="ppaAdj('${key}',2,-1)">−</button>
           <input class="score-num-big" type="number" min="0" value="${g.s2}"
-            data-focus-key="ppa-${g.i}-2"
-            onchange="ppaSetScoreInline(${g.i},2,this.value)"
+            data-focus-key="ppa-${key}-2"
+            onchange="ppaSetScoreInline('${key}',2,this.value)"
             onfocus="this.select()" inputmode="numeric" pattern="[0-9]*"
             style="color:#f472b6"/>
-          <button class="score-tap" onclick="ppaAdj(${g.i},2,1)" style="color:#f472b6">+</button>
+          <button class="score-tap" onclick="ppaAdj('${key}',2,1)" style="color:#f472b6">+</button>
         </div>
       </div>
-      <button class="done-btn" onclick="ppaMarkDone(${g.i})">Mark Game Done ✓</button>`;
+      <button class="done-btn" onclick="ppaMarkDone('${key}')">Mark Game Done ✓</button>`;
   }
   const t1Name = ppaTeamShort(g.t1);
   const t2Name = ppaTeamShort(g.t2);
@@ -3746,7 +3821,7 @@ function ppaGameCard(g) {
       <div class="rr-round-top">
         <span style="display:flex;align-items:center;gap:8px;min-width:0">
           ${rrCourtPillHtml(g.court)}
-          <span class="rr-round-title">Game ${g.i+1}</span>
+          <span class="rr-round-title">${title}</span>
         </span>
         <span class="badge ${badgeClass}">${badge}</span>
       </div>
@@ -3759,7 +3834,7 @@ function ppaGameCard(g) {
         ${scoreHtml}
       </div>
       ${resultHtml}
-      <div class="reset-row"><button class="reset-btn" onclick="ppaResetGame(${g.i})">↺ Reset</button></div>
+      <div class="reset-row"><button class="reset-btn" onclick="ppaResetGame('${key}')">↺ Reset</button></div>
     </div>`;
 }
 
@@ -3881,7 +3956,7 @@ function ppaRenderGames() {
       else if (isHalfway) cheer = 'Halfway there — keep it rolling';
       const cheerHtml = cheer ? `<span class="round-cheer">${cheer}</span>` : '';
       const cls = isFinal ? 'round-header final' : (isPenultimate ? 'round-header penultimate' : 'round-header');
-      const inner = rGames.map(g => ppaGameCard(g)).join('');
+      const inner = rGames.map(g => ppaGameCard(g, String(g.i), 'Game ' + (g.i+1))).join('');
       return `<div class="${cls}">Round ${rNum} · ${done}/${allRGames.length} done${cheerHtml}</div>${inner}`;
     }).join('');
     return poolHeader + roundsHtml;
@@ -3969,20 +4044,128 @@ function ppaRenderStandings() {
     </div>`;
 }
 
+function ppaRenderPlayoffs() {
+  const poolCount = Math.max(1, Math.min(ppaState.pools || 1, ppaState.teams.length));
+  if (!ppaPlayoffsSupported()) {
+    const reason = poolCount > 2
+      ? `Auto-bracket supports <strong>1 or 2 pools</strong>. You have ${poolCount}.`
+      : `Need at least <strong>4 teams</strong> to run a medal bracket.`;
+    return `
+      <div class="rr-page">
+        <div class="rr-coming-soon">
+          <h2>Playoffs unavailable</h2>
+          <p>${reason}</p>
+        </div>
+      </div>`;
+  }
+  if (!ppaRRComplete()) {
+    const total = ppaState.games.length;
+    const done = ppaState.games.filter(g => g.done).length;
+    return `
+      <div class="rr-page">
+        <div class="rr-coming-soon">
+          <h2>Playoffs locked</h2>
+          <p>Complete all round-robin games to unlock semifinals &amp; medals.</p>
+          <p style="margin-top:8px;color:#666">${done} / ${total || '\u2014'} done</p>
+        </div>
+      </div>`;
+  }
+  if (!ppaState.semi1 || !ppaState.semi2) {
+    ppaBuildPlayoffs();
+    ppaSave();
+  }
+  const byPool = ppaStandings();
+  let seedHtml = '';
+  if (poolCount === 1) {
+    const st = byPool[0] || [];
+    const rows = st.slice(0, 4).map((r, i) => `
+      <div style="padding:8px 14px;border-top:1px solid #252525;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:#fff;font-weight:700">${i+1}. ${r.name}</span>
+        <span style="color:#666;font-size:12px">${r.pf} PF \u00b7 ${r.gw}W</span>
+      </div>`).join('');
+    seedHtml = `
+      <div class="card-label" style="margin:16px 12px 0">Seeds</div>
+      <div class="card">
+        <div class="info-card" style="padding:12px 14px">Top 4 by PF \u2192 1v4, 2v3.</div>
+        ${rows}
+      </div>`;
+  } else {
+    const a = byPool[0] || [], b = byPool[1] || [];
+    const row = (r, lbl) => `
+      <div style="padding:8px 14px;border-top:1px solid #252525;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:#fff;font-weight:700">${lbl}. ${r.name}</span>
+        <span style="color:#666;font-size:12px">${r.pf} PF \u00b7 ${r.gw}W</span>
+      </div>`;
+    seedHtml = `
+      <div class="card-label" style="margin:16px 12px 0">Seeds</div>
+      <div class="card">
+        <div class="info-card" style="padding:12px 14px">Top 2 per pool \u2192 A1 vs B2, B1 vs A2.</div>
+        ${a[0] ? row(a[0], 'A1') : ''}
+        ${a[1] ? row(a[1], 'A2') : ''}
+        ${b[0] ? row(b[0], 'B1') : ''}
+        ${b[1] ? row(b[1], 'B2') : ''}
+      </div>`;
+  }
+  const semi1Html = ppaState.semi1 ? ppaGameCard(ppaState.semi1, 'semi1', '\ud83e\udd48 ' + ppaState.semi1.label) : '';
+  const semi2Html = ppaState.semi2 ? ppaGameCard(ppaState.semi2, 'semi2', '\ud83e\udd48 ' + ppaState.semi2.label) : '';
+  const goldHtml = ppaState.gold ? ppaGameCard(ppaState.gold, 'gold', '\ud83c\udfc6 ' + ppaState.gold.label) :
+    `<div class="rr-round-card">
+       <div class="rr-round-top" style="background:#1f1c00">
+         <span class="rr-round-title" style="color:#facc15">\ud83c\udfc6 Gold Medal</span>
+         <span class="badge badge-upcoming">Locked</span>
+       </div>
+       <div style="padding:16px;text-align:center;color:#666;font-size:13px">Complete both semis to unlock</div>
+     </div>`;
+  const bronzeHtml = ppaState.bronze ? ppaGameCard(ppaState.bronze, 'bronze', '\ud83e\udd49 ' + ppaState.bronze.label) :
+    `<div class="rr-round-card">
+       <div class="rr-round-top" style="background:#1a1400">
+         <span class="rr-round-title" style="color:#cd7f32">\ud83e\udd49 Bronze Medal</span>
+         <span class="badge badge-upcoming">Locked</span>
+       </div>
+       <div style="padding:16px;text-align:center;color:#666;font-size:13px">Complete both semis to unlock</div>
+     </div>`;
+  const resetBtn = viewMode === 'player' ? '' : `
+    <div style="padding:16px 12px;text-align:center">
+      <button class="reset-btn" style="font-size:11px" onclick="ppaResetPlayoffs()">\u21ba Reset Playoffs</button>
+    </div>`;
+  return `
+    <div class="rr-page">
+      <div class="rr-header">
+        <h1>Playoffs</h1>
+        <p>${poolCount === 1 ? 'Top 4 seeds \u00b7 single elimination' : 'Cross-bracket \u00b7 top 2 per pool'}</p>
+      </div>
+      ${seedHtml}
+      <div class="rr-subsection-label">Semifinals</div>
+      ${semi1Html}
+      ${semi2Html}
+      <div class="rr-subsection-label">Medal Matches</div>
+      ${goldHtml}
+      ${bronzeHtml}
+      ${resetBtn}
+      <div class="page-pad"></div>
+    </div>`;
+}
+
 function renderPPA() {
   const isPlayer = viewMode === 'player';
   if (isPlayer && ppaView === 'setup') ppaView = 'games';
+  const ppaDone = ppaRRComplete();
   const setupBtn = isPlayer ? '' :
     `<button onclick="ppaSetView('setup')" class="${ppaView==='setup'?'active':''}">Setup</button>`;
+  const playoffBtn = ppaPlayoffsSupported()
+    ? `<button onclick="ppaSetView('playoffs')"  class="${ppaView==='playoffs'?'active':''}" style="${ppaDone?'':'opacity:0.6'}">Playoffs</button>`
+    : '';
   const nav = `
     <nav class="nav">
       ${setupBtn}
       <button onclick="ppaSetView('games')"     class="${ppaView==='games'?'active':''}">Games</button>
       <button onclick="ppaSetView('standings')" class="${ppaView==='standings'?'active':''}">Standings</button>
+      ${playoffBtn}
     </nav>
     <div class="sync-bar sync-pending" id="sync-status-bar"></div>`;
   let body;
   if (ppaView === 'setup') body = ppaRenderSetup();
+  else if (ppaView === 'playoffs') body = ppaRenderPlayoffs();
   else if (ppaView === 'standings') body = ppaRenderStandings();
   else body = ppaRenderGames();
   swapApp(nav + body);
