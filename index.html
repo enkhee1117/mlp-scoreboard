@@ -2377,9 +2377,10 @@ function showWelcome() {
   const cards = players.map((p, i) => {
     const nm = rrPlayerName(i);
     const d = rrPlayerDUPR(i);
+    const showDupr = viewMode === 'organizer' && d !== null;
     return `<button onclick="pickWelcomeIdentity(${i})" style="background:#1a2a3f;border:1px solid #3a5f8a;color:#fff;padding:14px 10px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px">
       <span>${nm}</span>
-      ${d !== null ? `<span style="font-size:11px;color:#9ab6dd;font-weight:600">DUPR ${d.toFixed(2)}</span>` : ''}
+      ${showDupr ? `<span style="font-size:11px;color:#9ab6dd;font-weight:600">DUPR ${d.toFixed(2)}</span>` : ''}
     </button>`;
   }).join('');
   const el = document.createElement('div');
