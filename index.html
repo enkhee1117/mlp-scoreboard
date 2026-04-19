@@ -1625,17 +1625,21 @@ function swapApp(html) {
 
 // ─── Wake lock: keep screen on during live games ───
 let wakeLock = null;
+let wakeLockPending = false;
 async function updateWakeLock() {
+  if (wakeLockPending) return;
   const wantLock = tournamentMode === 'rr' && rrView === 'games';
-  try {
-    if (wantLock && !wakeLock && 'wakeLock' in navigator) {
+  if (wantLock && !wakeLock && 'wakeLock' in navigator) {
+    wakeLockPending = true;
+    try {
       wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', () => { wakeLock = null; });
-    } else if (!wantLock && wakeLock) {
-      const w = wakeLock; wakeLock = null;
-      await w.release();
-    }
-  } catch (_) { wakeLock = null; }
+    } catch (_) { wakeLock = null; }
+    wakeLockPending = false;
+  } else if (!wantLock && wakeLock) {
+    const w = wakeLock; wakeLock = null;
+    try { await w.release(); } catch (_) {}
+  }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) updateWakeLock(); });
 
@@ -2730,10 +2734,14 @@ function rrDiffNewlyDone(prev, next) {
   const msgs = [];
   if (!prev || !next) return msgs;
   const prevGames = prev.games || [], nextGames = next.games || [];
-  for (let i = 0; i < nextGames.length; i++) {
-    const pg = prevGames[i], ng = nextGames[i];
-    if (ng && ng.done && !(pg && pg.done)) {
-      msgs.push(`\u2713 Game ${i+1} final: ${ng.s1}\u2013${ng.s2}`);
+  // If the games array length changed, drop/regen happened -- skip toasts to avoid
+  // false positives from shifted done games landing in previously-incomplete slots.
+  if (prevGames.length === nextGames.length) {
+    for (let i = 0; i < nextGames.length; i++) {
+      const pg = prevGames[i], ng = nextGames[i];
+      if (ng && ng.done && !(pg && pg.done)) {
+        msgs.push(`\u2713 Game ${i+1} final: ${ng.s1}\u2013${ng.s2}`);
+      }
     }
   }
   ['semi1','semi2','gold','bronze'].forEach(k => {
