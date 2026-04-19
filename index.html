@@ -114,12 +114,15 @@
       background: #252525; border-radius: 12px; overflow: hidden;
     }
     .score-side.right { flex-direction: row-reverse; }
+    button, input[type="number"] { touch-action: manipulation; }
     .score-tap {
       flex: 0 0 44px; height: 52px;
       background: none; border: none; color: #fff;
       font-size: 26px; font-weight: 300; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
     .score-tap:active { background: #3a3a3a; }
     .score-tap.minus { font-size: 20px; color: #555; }
