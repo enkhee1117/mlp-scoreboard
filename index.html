@@ -2409,11 +2409,9 @@ function changeIdentity() {
 }
 
 // ─── First-time welcome ───
-function showWelcome() {
-  if (document.getElementById('welcome-overlay')) return;
+function rrWelcomeCardsHtml() {
   const players = (rrState && rrState.players) || [];
-  if (!players.length) return;
-  const cards = players.map((p, i) => {
+  return players.map((p, i) => {
     if (p && p.dropped) return '';
     const nm = rrPlayerName(i);
     const d = rrPlayerDUPR(i);
@@ -2423,6 +2421,15 @@ function showWelcome() {
       ${showDupr ? `<span style="font-size:11px;color:#9ab6dd;font-weight:600">DUPR ${d.toFixed(2)}</span>` : ''}
     </button>`;
   }).join('');
+}
+function refreshWelcome() {
+  const grid = document.getElementById('welcome-cards');
+  if (grid) grid.innerHTML = rrWelcomeCardsHtml();
+}
+function showWelcome() {
+  if (document.getElementById('welcome-overlay')) { refreshWelcome(); return; }
+  const players = (rrState && rrState.players) || [];
+  if (!players.length) return;
   const el = document.createElement('div');
   el.id = 'welcome-overlay';
   el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
@@ -2438,7 +2445,7 @@ function showWelcome() {
       <div style="padding:12px 20px 20px">
         <div style="color:#9ab6dd;font-size:13px;font-weight:600;text-align:center;margin-bottom:10px">Congrats on joining \u2014 let\u2019s get you set up.</div>
         <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin:14px 0 10px">Who are you?</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${cards}</div>
+        <div id="welcome-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${rrWelcomeCardsHtml()}</div>
         <div style="text-align:center;margin-top:16px">
           <button onclick="dismissWelcome()" style="background:transparent;border:none;color:#666;font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline">Skip for now</button>
         </div>
@@ -2681,6 +2688,7 @@ function rrInitSync() {
         rrState = rrMigrateState(payload.data);
         localStorage.setItem('rr_v1', JSON.stringify(rrState));
         if (tournamentMode === 'rr') render();
+        refreshWelcome();
       } else if (payload.path === '/' && payload.data === null) {
         rrSave();
       }
