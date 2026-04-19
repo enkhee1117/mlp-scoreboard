@@ -2701,12 +2701,16 @@ function rrGenerateGames(players, numGames, numCourts) {
   function attempt() {
     const played = Array(P).fill(0);
     const games = [];
-    for (let r = 0; r < totalRounds; r++) {
+    let r = 0;
+    while (games.length < numGames && r < totalRounds + 2) {
+      // How many games fit in this round — might be fewer than perRound on the last round.
+      const thisRound = Math.min(perRound, numGames - games.length);
+      // Pick only as many players as will actually play this round. This avoids
+      // "selected but bumped" imbalances when the last round is truncated.
       const indices = rrShuffle([...Array(P).keys()]);
       indices.sort((a, b) => played[a] - played[b]);
-      const playing = rrShuffle(indices.slice(0, perRound * 4));
-      for (let g = 0; g < perRound; g++) {
-        if (games.length >= numGames) break;
+      const playing = rrShuffle(indices.slice(0, thisRound * 4));
+      for (let g = 0; g < thisRound; g++) {
         const four = playing.slice(g * 4, g * 4 + 4);
         if (four.length < 4) break;
         four.forEach(p => played[p]++);
@@ -2719,6 +2723,7 @@ function rrGenerateGames(players, numGames, numCourts) {
           s1: 0, s2: 0, done: false, winner: null,
         });
       }
+      r++;
     }
     return games;
   }
@@ -2835,17 +2840,25 @@ function rrGenerateAll() {
   rrState.games = rrGenerateGames(rrState.players, total, rrState.numCourts);
   rrState.draft = { picks: {} };
   rrState.semi1 = null; rrState.semi2 = null; rrState.gold = null; rrState.bronze = null;
-  // Verify every player got exactly gamesPerPlayer games; warn organizer if not.
-  const target = rrState.gamesPerPlayer;
+  // Verify balance: every player should be within the mathematical min/max range.
+  // For P players and G games, total slots = G*4, so min = floor(4G/P), max = ceil(4G/P).
+  // Anyone outside [min, max] is a real imbalance bug; spread of 1 is unavoidable when P*gpp isn't a multiple of 4.
   const counts = new Array(rrState.players.length).fill(0);
   rrState.games.forEach(g => {
     (g.team1 || []).forEach(i => { if (i >= 0 && i < counts.length) counts[i]++; });
     (g.team2 || []).forEach(i => { if (i >= 0 && i < counts.length) counts[i]++; });
   });
-  const offenders = counts.map((c, i) => ({ i, c })).filter(x => x.c !== target);
+  const P = rrState.players.length;
+  const G = rrState.games.length;
+  const lo = Math.floor(4 * G / P);
+  const hi = Math.ceil(4 * G / P);
+  const offenders = counts.map((c, i) => ({ i, c })).filter(x => x.c < lo || x.c > hi);
   if (offenders.length) {
     const detail = offenders.map(x => `${rrPlayerNameRaw(x.i)}:${x.c}`).join(', ');
-    toast(`Uneven schedule — expected ${target}/player. ${detail}`, 3500);
+    toast(`Uneven schedule — expected ${lo===hi?lo:lo+'\u2013'+hi}/player. ${detail}`, 3500);
+  } else if (lo !== hi) {
+    const highCount = counts.filter(c => c === hi).length;
+    toast(`Schedule balanced: ${P - highCount} play ${lo}, ${highCount} play ${hi}.`, 2500);
   }
   rrSave(); rrSetView('games');
 }
