@@ -1529,7 +1529,6 @@ function renderStandings() {
 //  RENDER
 // ═══════════════════════════════════════════════
 function setTournamentMode(mode) {
-  if (mode === 'ppa') { alert('PPA style coming soon!'); return; }
   if (mode === tournamentMode) return;
   // Safety: confirm before switching if the current mode has data.
   // Nothing is deleted — the other mode has its own stored state.
@@ -1539,6 +1538,8 @@ function setTournamentMode(mode) {
     hasData = matches.some(m => ((m && m.games) || []).some(g => g.s1>0 || g.s2>0 || g.done));
   } else if (tournamentMode === 'rr') {
     hasData = !!(rrState && rrState.games && rrState.games.length > 0);
+  } else if (tournamentMode === 'ppa') {
+    hasData = !!(ppaState && ppaState.games && ppaState.games.length > 0);
   }
   if (hasData) {
     const labels = { mlp:'MLP', rr:'Round Robin', ppa:'PPA' };
@@ -1557,7 +1558,7 @@ function styleBar() {
     <div class="style-bar">
       <button class="style-btn ${tournamentMode==='mlp'?'active':''}" onclick="setTournamentMode('mlp')">MLP</button>
       <button class="style-btn ${tournamentMode==='rr'?'active':''}" onclick="setTournamentMode('rr')">Round Robin</button>
-      <button class="style-btn ${tournamentMode==='ppa'?'active':''} disabled" onclick="setTournamentMode('ppa')">PPA · Soon</button>
+      <button class="style-btn ${tournamentMode==='ppa'?'active':''}" onclick="setTournamentMode('ppa')">PPA</button>
     </div>
   `;
 }
@@ -1615,6 +1616,7 @@ function swapApp(html) {
 
 function render() {
   if (tournamentMode === 'rr') { renderRR(); return; }
+  if (tournamentMode === 'ppa') { renderPPA(); return; }
 
   const nav = `
     <nav class="nav">
@@ -2428,11 +2430,10 @@ function showSettings() {
     const sel = (myIdentity === i) ? ' selected' : '';
     return `<option value="${i}"${sel}>${nm}</option>`;
   }).join('');
-  const modeLabels = { mlp:'MLP', rr:'Round Robin', ppa:'PPA · Soon' };
+  const modeLabels = { mlp:'MLP', rr:'Round Robin', ppa:'PPA' };
   const modeButtons = ['mlp','rr','ppa'].map(m => {
     const active = (tournamentMode === m) ? 'background:#fff;color:#000' : 'background:#1a1a1a;color:#ddd';
-    const disabled = (m === 'ppa') ? 'opacity:0.5' : '';
-    return `<button onclick="setTournamentMode('${m}')" style="flex:1;padding:10px 6px;border:1px solid #2a2a2a;border-radius:8px;font-size:13px;font-weight:700;${active};${disabled}">${modeLabels[m]}</button>`;
+    return `<button onclick="setTournamentMode('${m}')" style="flex:1;padding:10px 6px;border:1px solid #2a2a2a;border-radius:8px;font-size:13px;font-weight:700;${active}">${modeLabels[m]}</button>`;
   }).join('');
   const viewLabels = { organizer:'Organizer', player:'Player' };
   const viewButtons = ['organizer','player'].map(m => {
@@ -2525,6 +2526,11 @@ function showSettings() {
         ${tournamentMode === 'rr'
           ? `<div class="settings-row settings-danger" onclick="rrResetAll();hideSettings()">
               <div><div style="color:#f87171;font-weight:700">Reset Round Robin</div><div style="font-size:11px;color:#a06060;margin-top:2px">Clears all scores &amp; generated games</div></div>
+              <span class="chev">›</span>
+            </div>`
+          : tournamentMode === 'ppa'
+          ? `<div class="settings-row settings-danger" onclick="ppaResetAll();hideSettings()">
+              <div><div style="color:#f87171;font-weight:700">Reset PPA Tournament</div><div style="font-size:11px;color:#a06060;margin-top:2px">Clears all scores</div></div>
               <span class="chev">›</span>
             </div>`
           : `<div class="settings-row settings-danger" onclick="resetAll();hideSettings()">
@@ -3451,6 +3457,529 @@ function rrRenderPlayoffs() {
   `;
 }
 
+// ═══════════════════════════════════════════════
+// PPA (Fixed Partner Teams) — round robin with optional pools
+// ═══════════════════════════════════════════════
+function ppaMigrate(s) {
+  s.name = s.name || 'PPA Tournament';
+  s.teams = (s.teams || []).map(t => ({ name: t.name || '', p1: t.p1 || '', p2: t.p2 || '' }));
+  s.pools = Math.max(1, s.pools || 1);
+  s.numCourts = Math.max(1, s.numCourts || 2);
+  s.games = (s.games || []).map(g => ({
+    i: g.i|0, court: g.court|0 || 1, round: g.round|0 || 1, pool: g.pool|0,
+    t1: g.t1|0, t2: g.t2|0, s1: g.s1|0, s2: g.s2|0,
+    done: !!g.done, winner: g.winner || null,
+  }));
+  return s;
+}
+function loadPPAState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('ppa_v1'));
+    if (s && Array.isArray(s.teams)) return ppaMigrate(s);
+  } catch(_) {}
+  return {
+    name: 'PPA Tournament',
+    teams: [
+      { name: '', p1: 'Player 1', p2: 'Player 2' },
+      { name: '', p1: 'Player 3', p2: 'Player 4' },
+      { name: '', p1: 'Player 5', p2: 'Player 6' },
+      { name: '', p1: 'Player 7', p2: 'Player 8' },
+    ],
+    pools: 1,
+    numCourts: 2,
+    games: [],
+  };
+}
+let ppaState = loadPPAState();
+let ppaView = localStorage.getItem('ppa_view') || 'setup';
+let ppaSaveTimer = null;
+let ppaLocalWrite = false;
+let ppaSyncSource = null;
+
+function ppaSave() {
+  localStorage.setItem('ppa_v1', JSON.stringify(ppaState));
+  if (!FIREBASE_URL) return;
+  clearTimeout(ppaSaveTimer);
+  ppaSaveTimer = setTimeout(() => {
+    ppaLocalWrite = true;
+    fetch(FIREBASE_URL + '/ppa_state.json', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(ppaState)
+    }).catch(()=>{ ppaLocalWrite = false; });
+  }, 300);
+}
+function ppaInitSync() {
+  if (ppaSyncSource) { ppaSyncSource.close(); ppaSyncSource = null; }
+  if (!FIREBASE_URL) return;
+  ppaSyncSource = new EventSource(FIREBASE_URL + '/ppa_state.json');
+  ppaSyncSource.addEventListener('put', e => {
+    try {
+      const payload = JSON.parse(e.data);
+      if (payload.data) {
+        if (ppaLocalWrite) { ppaLocalWrite = false; return; }
+        ppaState = ppaMigrate(payload.data);
+        localStorage.setItem('ppa_v1', JSON.stringify(ppaState));
+        if (tournamentMode === 'ppa') render();
+      } else if (payload.path === '/' && payload.data === null) {
+        ppaSave();
+      }
+    } catch(_) {}
+  });
+}
+function ppaSetView(v) { ppaView = v; localStorage.setItem('ppa_view', v); render(); }
+function ppaTeam(i) { return ppaState.teams[i] || null; }
+function ppaTeamShort(i) {
+  const t = ppaTeam(i);
+  if (!t) return '?';
+  if (t.name) return escapeHtml(t.name);
+  return escapeHtml((t.p1 || 'P1') + ' & ' + (t.p2 || 'P2'));
+}
+function ppaTeamPlayers(i) {
+  const t = ppaTeam(i);
+  if (!t) return '';
+  return escapeHtml((t.p1 || 'P1') + ' & ' + (t.p2 || 'P2'));
+}
+function ppaAddTeam() {
+  const n = ppaState.teams.length + 1;
+  ppaState.teams.push({ name: '', p1: 'Player ' + (n*2-1), p2: 'Player ' + (n*2) });
+  if (ppaState.games.length) ppaState.games = [];
+  ppaSave(); render();
+}
+function ppaRemoveTeam(idx) {
+  if (ppaState.teams.length <= 2) { alert('Need at least 2 teams.'); return; }
+  if (ppaState.games.length && !confirm('Removing a team will clear the schedule. Continue?')) return;
+  ppaState.teams.splice(idx, 1);
+  ppaState.games = [];
+  ppaSave(); render();
+}
+function ppaUpdateTeam(idx, field, value) {
+  const t = ppaState.teams[idx];
+  if (!t) return;
+  t[field] = value;
+  ppaSave();
+}
+function ppaUpdateConfig(key, value) {
+  const n = Math.max(1, parseInt(value) || 1);
+  if (key === 'pools') ppaState.pools = Math.min(4, n);
+  else if (key === 'numCourts') ppaState.numCourts = n;
+  ppaSave(); render();
+}
+function ppaUpdateName(name) { ppaState.name = String(name || '').slice(0, 60); ppaSave(); }
+function ppaGetGame(idx) { return ppaState.games[Number(idx)] || null; }
+function ppaAdj(idx, team, delta) {
+  const g = ppaGetGame(idx); if (!g || g.done) return;
+  if (team === 1) g.s1 = Math.max(0, g.s1 + delta);
+  else g.s2 = Math.max(0, g.s2 + delta);
+  ppaSave(); render();
+}
+function ppaSetScoreInline(idx, team, value) {
+  const g = ppaGetGame(idx); if (!g || g.done) return;
+  const n = Math.max(0, parseInt(value) || 0);
+  if (team === 1) g.s1 = n; else g.s2 = n;
+  ppaSave(); render();
+}
+function ppaMarkDone(idx) {
+  const g = ppaGetGame(idx); if (!g) return;
+  if (g.s1 === g.s2) { alert("Scores tied — can't complete."); return; }
+  const hi = Math.max(g.s1, g.s2);
+  const margin = Math.abs(g.s1 - g.s2);
+  if (hi < 11 || margin < 2) {
+    if (!confirm(`Unusual score ${g.s1}–${g.s2} (rules: 11, win by 2). Submit anyway?`)) return;
+  }
+  g.done = true;
+  g.winner = g.s1 > g.s2 ? 't1' : 't2';
+  launchConfetti();
+  ppaSave(); render();
+}
+function ppaUndoGame(idx) {
+  const g = ppaGetGame(idx); if (!g) return;
+  g.done = false; g.winner = null;
+  ppaSave(); render();
+}
+function ppaResetGame(idx) {
+  const g = ppaGetGame(idx); if (!g) return;
+  if (!confirm('Reset this game\u2019s score?')) return;
+  g.s1 = 0; g.s2 = 0; g.done = false; g.winner = null;
+  ppaSave(); render();
+}
+function ppaResetAll() {
+  if (!confirm('Reset the whole PPA tournament? All scores will be cleared.')) return;
+  ppaState.games.forEach(g => { g.s1 = 0; g.s2 = 0; g.done = false; g.winner = null; });
+  ppaSave(); render();
+}
+
+function ppaAssignPools() {
+  const n = ppaState.teams.length;
+  const poolCount = Math.max(1, Math.min(ppaState.pools || 1, n));
+  const assignment = new Array(n);
+  for (let i = 0; i < n; i++) assignment[i] = i % poolCount;
+  return assignment;
+}
+function ppaGenerateAll() {
+  const n = ppaState.teams.length;
+  if (n < 2) { alert('Need at least 2 teams.'); return; }
+  if (ppaState.games.some(g => g.done || g.s1>0 || g.s2>0)) {
+    if (!confirm('This will overwrite all current games and scores. Continue?')) return;
+  }
+  const teamPool = ppaAssignPools();
+  const matchups = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (teamPool[i] === teamPool[j]) matchups.push({ t1: i, t2: j, pool: teamPool[i] });
+    }
+  }
+  for (let k = matchups.length - 1; k > 0; k--) {
+    const r = Math.floor(Math.random() * (k + 1));
+    [matchups[k], matchups[r]] = [matchups[r], matchups[k]];
+  }
+  const rounds = [];
+  for (const m of matchups) {
+    let placed = false;
+    for (const round of rounds) {
+      if (round.length >= ppaState.numCourts) continue;
+      if (round.some(g => g.t1 === m.t1 || g.t2 === m.t1 || g.t1 === m.t2 || g.t2 === m.t2)) continue;
+      round.push(m);
+      placed = true;
+      break;
+    }
+    if (!placed) rounds.push([m]);
+  }
+  const games = [];
+  let gi = 0;
+  rounds.forEach((round, r) => {
+    round.forEach((m, c) => {
+      games.push({
+        i: gi++, court: c + 1, round: r + 1, pool: m.pool,
+        t1: m.t1, t2: m.t2,
+        s1: 0, s2: 0, done: false, winner: null,
+      });
+    });
+  });
+  ppaState.games = games;
+  ppaSave();
+  ppaSetView('games');
+}
+function ppaStandings() {
+  const poolCount = Math.max(1, ppaState.pools || 1);
+  const rows = ppaState.teams.map((_, idx) => ({
+    idx, name: ppaTeamShort(idx), pool: idx % poolCount,
+    pf: 0, pa: 0, gp: 0, gw: 0,
+  }));
+  ppaState.games.forEach(g => {
+    if (!g.done) return;
+    const a = rows[g.t1], b = rows[g.t2];
+    if (a) { a.pf += g.s1; a.pa += g.s2; a.gp++; if (g.winner === 't1') a.gw++; }
+    if (b) { b.pf += g.s2; b.pa += g.s1; b.gp++; if (g.winner === 't2') b.gw++; }
+  });
+  rows.forEach(r => r.diff = r.pf - r.pa);
+  const byPool = {};
+  for (let p = 0; p < poolCount; p++) byPool[p] = [];
+  rows.forEach(r => { if (byPool[r.pool]) byPool[r.pool].push(r); });
+  Object.keys(byPool).forEach(p => {
+    byPool[p].sort((a, b) => b.pf - a.pf || b.diff - a.diff || b.gw - a.gw);
+  });
+  return byPool;
+}
+function ppaPoolLabel(p) { return ppaState.pools > 1 ? `Pool ${String.fromCharCode(65 + p)}` : ''; }
+
+function ppaGameCard(g) {
+  let badge, badgeClass;
+  if (g.done) { badge='Final'; badgeClass='badge-done'; }
+  else if (g.s1>0 || g.s2>0) { badge='Live'; badgeClass='badge-live'; }
+  else { badge='Upcoming'; badgeClass='badge-upcoming'; }
+  const w1 = g.done && g.winner === 't1';
+  const w2 = g.done && g.winner === 't2';
+  let scoreHtml;
+  if (g.done) {
+    scoreHtml = `
+      <div class="score-row">
+        <div class="score-side" style="justify-content:center"><div class="score-num-big" style="color:${w1?'#60a5fa':'#fff'}">${g.s1}</div></div>
+        <div class="score-sep">–</div>
+        <div class="score-side right" style="justify-content:center"><div class="score-num-big" style="color:${w2?'#f472b6':'#fff'}">${g.s2}</div></div>
+      </div>
+      <div style="text-align:center;margin-top:4px"><button class="undo-btn" onclick="ppaUndoGame(${g.i})">Undo</button></div>`;
+  } else {
+    scoreHtml = `
+      <div class="score-row">
+        <div class="score-side">
+          <button class="score-tap" onclick="ppaAdj(${g.i},1,1)" style="color:#60a5fa">+</button>
+          <input class="score-num-big" type="number" min="0" value="${g.s1}"
+            data-focus-key="ppa-${g.i}-1"
+            onchange="ppaSetScoreInline(${g.i},1,this.value)"
+            onfocus="this.select()" inputmode="numeric" pattern="[0-9]*"
+            style="color:#60a5fa"/>
+          <button class="score-tap minus" onclick="ppaAdj(${g.i},1,-1)">−</button>
+        </div>
+        <div class="score-sep">–</div>
+        <div class="score-side right">
+          <button class="score-tap minus" onclick="ppaAdj(${g.i},2,-1)">−</button>
+          <input class="score-num-big" type="number" min="0" value="${g.s2}"
+            data-focus-key="ppa-${g.i}-2"
+            onchange="ppaSetScoreInline(${g.i},2,this.value)"
+            onfocus="this.select()" inputmode="numeric" pattern="[0-9]*"
+            style="color:#f472b6"/>
+          <button class="score-tap" onclick="ppaAdj(${g.i},2,1)" style="color:#f472b6">+</button>
+        </div>
+      </div>
+      <button class="done-btn" onclick="ppaMarkDone(${g.i})">Mark Game Done ✓</button>`;
+  }
+  const t1Name = ppaTeamShort(g.t1);
+  const t2Name = ppaTeamShort(g.t2);
+  const t1Sub = ppaTeam(g.t1) && ppaTeam(g.t1).name ? `<div style="font-size:11px;color:#888;margin-top:2px">${ppaTeamPlayers(g.t1)}</div>` : '';
+  const t2Sub = ppaTeam(g.t2) && ppaTeam(g.t2).name ? `<div style="font-size:11px;color:#888;margin-top:2px;text-align:right">${ppaTeamPlayers(g.t2)}</div>` : '';
+  let resultHtml = '';
+  if (g.done) {
+    const winName = g.winner === 't1' ? t1Name : t2Name;
+    resultHtml = `<div class="result-banner" style="background:#0f2a0f;color:#4ade80">${winName} wins!</div>`;
+  }
+  return `
+    <div class="rr-round-card" ${!g.done && (g.s1>0||g.s2>0)?'id="active-match"':''}>
+      <div class="rr-round-top">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0">
+          ${rrCourtPillHtml(g.court)}
+          <span class="rr-round-title">Game ${g.i+1}</span>
+        </span>
+        <span class="badge ${badgeClass}">${badge}</span>
+      </div>
+      <div class="rr-game-card${g.done?' complete':''}">
+        <div class="rr-team-row">
+          <div class="rr-team-names t1">${t1Name}${t1Sub}</div>
+          <div class="rr-vs">vs</div>
+          <div class="rr-team-names t2 right">${t2Name}${t2Sub}</div>
+        </div>
+        ${scoreHtml}
+      </div>
+      ${resultHtml}
+      <div class="reset-row"><button class="reset-btn" onclick="ppaResetGame(${g.i})">↺ Reset</button></div>
+    </div>`;
+}
+
+function ppaRenderSetup() {
+  const teamRows = ppaState.teams.map((t, i) => `
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:10px;margin:0 12px 8px;display:grid;grid-template-columns:28px 1fr 32px;gap:8px;align-items:center">
+      <div style="color:#666;font-weight:800;text-align:center">${i+1}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <input class="rr-player-input" placeholder="Team name (optional)"
+          value="${escapeHtml(t.name||'')}"
+          data-focus-key="ppa-tname-${i}"
+          oninput="ppaUpdateTeam(${i},'name',this.value)"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <input class="rr-player-input" placeholder="Player 1"
+            value="${escapeHtml(t.p1||'')}"
+            data-focus-key="ppa-tp1-${i}"
+            oninput="ppaUpdateTeam(${i},'p1',this.value)"/>
+          <input class="rr-player-input" placeholder="Player 2"
+            value="${escapeHtml(t.p2||'')}"
+            data-focus-key="ppa-tp2-${i}"
+            oninput="ppaUpdateTeam(${i},'p2',this.value)"/>
+        </div>
+      </div>
+      ${ppaState.teams.length > 2
+        ? `<button onclick="ppaRemoveTeam(${i})" style="width:32px;height:32px;background:#2a2a2a;border:none;border-radius:8px;color:#666;font-size:16px;cursor:pointer">×</button>`
+        : '<div></div>'}
+    </div>`).join('');
+  const hasGames = ppaState.games.length > 0;
+  const started = ppaState.games.some(g => g.done || g.s1>0 || g.s2>0);
+  const n = ppaState.teams.length;
+  const poolCount = Math.max(1, ppaState.pools || 1);
+  let totalGames = 0;
+  {
+    const assn = ppaAssignPools();
+    for (let i = 0; i < n; i++) for (let j = i+1; j < n; j++) if (assn[i] === assn[j]) totalGames++;
+  }
+  return `
+    <div class="rr-page">
+      <div class="rr-header">
+        <h1>PPA Setup</h1>
+        <p>${n} teams · ${poolCount} pool${poolCount>1?'s':''} · ${totalGames} total games</p>
+      </div>
+      <div class="rr-subsection-label">Teams · ${n}</div>
+      ${teamRows}
+      <div style="padding:0 12px">
+        <button onclick="ppaAddTeam()" style="width:100%;margin-top:4px;padding:10px;background:#1e1e1e;border:1px dashed #333;border-radius:9px;color:#888;font-size:13px;font-weight:700;cursor:pointer">+ Add Team</button>
+      </div>
+      <div class="rr-subsection-label">Configuration</div>
+      <div style="padding: 0 12px">
+        <div class="rr-config-grid">
+          <div class="rr-config-item">
+            <div class="rr-config-label">Pools</div>
+            <input class="rr-config-input" type="number" min="1" max="4"
+              value="${poolCount}" onchange="ppaUpdateConfig('pools', this.value)"/>
+          </div>
+          <div class="rr-config-item">
+            <div class="rr-config-label">Courts</div>
+            <input class="rr-config-input" type="number" min="1"
+              value="${ppaState.numCourts}" onchange="ppaUpdateConfig('numCourts', this.value)"/>
+          </div>
+        </div>
+        <div style="color:#666;font-size:12px;margin:10px 4px;line-height:1.5">
+          ${poolCount === 1
+            ? `Single pool: all ${n} teams play each other once \u2192 <strong style="color:#ccc">${totalGames}</strong> games.`
+            : `${poolCount} pools of ${Math.ceil(n/poolCount)}–${Math.floor(n/poolCount)} teams, round-robin within each pool.`}
+        </div>
+      </div>
+      <button class="rr-generate-btn" onclick="ppaGenerateAll()">
+        ${hasGames ? '🎲 Regenerate Schedule' : '🎲 Generate Schedule'}
+      </button>
+      ${hasGames ? `
+        <div style="padding: 4px 16px 0; color:#888; font-size:12px; text-align:center">
+          ${started ? '⚠️ Regenerating will reset all scores.' : 'Games ready. Tap Games tab to start.'}
+        </div>` : ''}
+      <div class="page-pad"></div>
+    </div>`;
+}
+
+function ppaRenderGames() {
+  if (!ppaState.games.length) {
+    return `
+      <div class="rr-page">
+        <div class="rr-coming-soon">
+          <h2>No games yet</h2>
+          <p>Go to Setup \u2192 tap <strong>Generate Schedule</strong> to begin.</p>
+          <button class="rr-generate-btn" style="max-width:260px;margin:20px auto;display:block" onclick="ppaSetView('setup')">Go to Setup</button>
+        </div>
+      </div>`;
+  }
+  const totalDone = ppaState.games.filter(g => g.done).length;
+  const total = ppaState.games.length;
+  const poolCount = Math.max(1, ppaState.pools || 1);
+  const byPool = {};
+  ppaState.games.forEach(g => {
+    if (g.done && !rrShowDone) return;
+    if (!byPool[g.pool]) byPool[g.pool] = {};
+    if (!byPool[g.pool][g.round]) byPool[g.pool][g.round] = [];
+    byPool[g.pool][g.round].push(g);
+  });
+  const totalRounds = Math.max(1, ...ppaState.games.map(g => g.round||1));
+  const poolKeys = Object.keys(byPool).sort((a,b)=>a-b);
+  const hasVisible = poolKeys.length > 0;
+  const gamesHtml = hasVisible ? poolKeys.map(poolIdx => {
+    const rounds = byPool[poolIdx];
+    const poolLabel = ppaPoolLabel(Number(poolIdx));
+    const poolHeader = poolLabel ? `<div style="padding:18px 16px 0;font-size:13px;font-weight:800;color:#facc15;letter-spacing:0.5px">${poolLabel}</div>` : '';
+    const roundKeys = Object.keys(rounds).sort((a,b)=>a-b);
+    const roundsHtml = roundKeys.map(r => {
+      const rNum = Number(r);
+      const rGames = rounds[r];
+      const allRGames = ppaState.games.filter(g => g.pool === Number(poolIdx) && (g.round||1) === rNum);
+      const done = allRGames.filter(g => g.done).length;
+      const isFinal = rNum === totalRounds;
+      const isPenultimate = totalRounds >= 3 && rNum === totalRounds - 1;
+      const isHalfway = totalRounds >= 4 && rNum === Math.ceil(totalRounds / 2);
+      let cheer = '';
+      if (isFinal) cheer = 'Final round · you got this 🤜🏻';
+      else if (isPenultimate) cheer = 'One more after this 💪';
+      else if (isHalfway) cheer = 'Halfway there — keep it rolling';
+      const cheerHtml = cheer ? `<span class="round-cheer">${cheer}</span>` : '';
+      const cls = isFinal ? 'round-header final' : (isPenultimate ? 'round-header penultimate' : 'round-header');
+      const inner = rGames.map(g => ppaGameCard(g)).join('');
+      return `<div class="${cls}">Round ${rNum} · ${done}/${allRGames.length} done${cheerHtml}</div>${inner}`;
+    }).join('');
+    return poolHeader + roundsHtml;
+  }).join('') : `
+    <div style="padding:40px 20px;text-align:center;color:#666">
+      <div style="font-size:40px;margin-bottom:10px">🎉</div>
+      <div style="font-weight:700;color:#eee;font-size:15px;margin-bottom:4px">All games complete</div>
+      <div style="font-size:12px">Toggle below to see finished games.</div>
+    </div>`;
+  const filterPill = `
+    <div style="padding:8px 12px 4px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span style="color:#888;font-size:12px">${totalDone} / ${total} games complete</span>
+      <button onclick="rrToggleShowDone()"
+        style="background:${rrShowDone?'#1a2a3f':'#1a1a1a'};border:1px solid ${rrShowDone?'#3a5f8a':'#333'};color:${rrShowDone?'#60a5fa':'#888'};padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">
+        ${rrShowDone ? '✓ Showing finished' : 'Show finished'}
+      </button>
+    </div>`;
+  return `
+    <div class="rr-page">
+      <div class="rr-header">
+        <h1>${escapeHtml(ppaState.name || 'PPA Tournament')}</h1>
+        <p>${poolCount > 1 ? poolCount+' pools · ' : ''}${rrShowDone ? 'All games' : 'Upcoming &amp; live games only'}</p>
+      </div>
+      ${filterPill}
+      ${gamesHtml}
+      ${viewMode === 'player' ? '' : `
+        <div style="padding:16px 12px;text-align:center">
+          <button class="rr-generate-btn warn" style="max-width:260px;display:inline-block" onclick="ppaResetAll()">↺ Reset Entire Tournament</button>
+        </div>`}
+      <div class="page-pad"></div>
+    </div>`;
+}
+
+function ppaRenderStandings() {
+  const byPool = ppaStandings();
+  const poolCount = Math.max(1, ppaState.pools || 1);
+  const poolKeys = Object.keys(byPool).sort((a,b)=>a-b);
+  const tables = poolKeys.map(p => {
+    const rows = byPool[p].map((row, i) => {
+      let badgeCls = 'top8';
+      if (i === 0) badgeCls = 'gold';
+      else if (i === 1) badgeCls = 'silver';
+      else if (i === 2) badgeCls = 'bronze';
+      return `
+        <div class="rr-standings-row">
+          <div class="rr-rank-badge ${badgeCls}">${i+1}</div>
+          <div class="rr-player-name">${row.name}</div>
+          <div class="rr-stat primary">${row.pf}</div>
+          <div class="rr-stat">${row.diff>0?'+':''}${row.diff}</div>
+          <div class="rr-stat">${row.gw}/${row.gp}</div>
+          <div class="rr-stat">${row.pa}</div>
+        </div>`;
+    }).join('');
+    const label = poolCount > 1 ? `<div class="rr-subsection-label">${ppaPoolLabel(Number(p))}</div>` : '';
+    return `
+      ${label}
+      <div class="card">
+        <div class="rr-standings-row header-row">
+          <span></span><span>Team</span>
+          <span style="text-align:center;color:#facc15">PF ↓</span>
+          <span style="text-align:center">+/−</span>
+          <span style="text-align:center">W/G</span>
+          <span style="text-align:center">PA</span>
+        </div>
+        ${rows || '<div style="padding:14px;color:#666;font-size:12px">No teams in pool.</div>'}
+      </div>`;
+  }).join('');
+  return `
+    <div class="rr-page">
+      <div class="rr-header">
+        <h1>Team Standings</h1>
+        <p>${poolCount > 1 ? 'Pool standings · sorted by Points For' : 'Sorted by points scored, then differential, then wins'}</p>
+      </div>
+      ${tables}
+      <div class="card-label" style="margin:16px 12px 0">Scoring</div>
+      <div class="card">
+        <div class="info-card">
+          <div>🎯 <strong>PF</strong> — Points scored (primary rank)</div>
+          <div>📊 <strong>+/−</strong> — Point differential (tiebreak 1)</div>
+          <div>🏆 <strong>W/G</strong> — Wins / games played (tiebreak 2)</div>
+          <div>🛡️ <strong>PA</strong> — Points against you</div>
+        </div>
+      </div>
+      <div class="page-pad"></div>
+    </div>`;
+}
+
+function renderPPA() {
+  const isPlayer = viewMode === 'player';
+  if (isPlayer && ppaView === 'setup') ppaView = 'games';
+  const setupBtn = isPlayer ? '' :
+    `<button onclick="ppaSetView('setup')" class="${ppaView==='setup'?'active':''}">Setup</button>`;
+  const nav = `
+    <nav class="nav">
+      ${setupBtn}
+      <button onclick="ppaSetView('games')"     class="${ppaView==='games'?'active':''}">Games</button>
+      <button onclick="ppaSetView('standings')" class="${ppaView==='standings'?'active':''}">Standings</button>
+    </nav>
+    <div class="sync-bar sync-pending" id="sync-status-bar"></div>`;
+  let body;
+  if (ppaView === 'setup') body = ppaRenderSetup();
+  else if (ppaView === 'standings') body = ppaRenderStandings();
+  else body = ppaRenderGames();
+  swapApp(nav + body);
+}
+
 function renderRR() {
   const rrDone = rrRRComplete();
   const isPlayer = viewMode === 'player';
@@ -3491,7 +4020,8 @@ try {
   render();
   initSync();
   rrInitSync();
-  if (localStorage.getItem('welcomed') !== '1') showWelcome();
+  ppaInitSync();
+  if (tournamentMode === 'rr' && localStorage.getItem('welcomed') !== '1') showWelcome();
 } catch (err) {
   document.getElementById('app').innerHTML = `<div style="padding:20px;color:#f87171;font-family:monospace;font-size:12px;line-height:1.6">
     <strong style="color:#fff;font-size:14px">Startup error</strong><br><br>
