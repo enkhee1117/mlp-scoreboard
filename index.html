@@ -2246,18 +2246,23 @@ const RR_REGISTRY_SEED = [
   { name: 'Andrew',    dupr: 3.187, gender: 'm' },
   { name: 'Paul',      dupr: 3.175, gender: 'm' },
   // Apr 19 women's tournament
-  { name: 'Manal',     dupr: 4.02,  gender: 'f' },
-  { name: 'Xiangdong', dupr: 4.04,  gender: 'f' },
-  { name: 'Emily',     dupr: 3.90,  gender: 'f' },
-  { name: 'Ency',      dupr: 3.80,  gender: 'f' },
-  { name: 'Cathy',     dupr: 4.00,  gender: 'f' },
-  { name: 'Elina',     dupr: 3.50,  gender: 'f' },
-  { name: 'Young',     dupr: 3.50,  gender: 'f' },
-  { name: 'Terry',     dupr: 3.40,  gender: 'f' },
-  { name: 'Jenny',     dupr: 3.10,  gender: 'f' },
-  { name: 'Joo Mi',    dupr: 3.10,  gender: 'f' },
-  { name: 'Sainaa',    dupr: 3.40,  gender: 'f' },
-  { name: 'Shilan',    dupr: 3.60,  gender: 'f' },
+  { name: 'Manal',      dupr: 4.02,  gender: 'f' },
+  { name: 'Xiangdong',  dupr: 4.04,  gender: 'f' },
+  { name: 'Emily',      dupr: 3.90,  gender: 'f' },
+  { name: 'Ency',       dupr: 3.80,  gender: 'f' },
+  { name: 'Cathy',      dupr: 4.00,  gender: 'f' },
+  { name: 'Elina',      dupr: 3.50,  gender: 'f' },
+  { name: 'Young',      dupr: 3.50,  gender: 'f' },
+  { name: 'Terry',      dupr: 3.40,  gender: 'f' },
+  { name: 'Jenny',      dupr: 3.10,  gender: 'f' },
+  { name: 'Joo Mi',     dupr: 3.10,  gender: 'f' },
+  { name: 'Sainaa',     dupr: 3.40,  gender: 'f' },
+  { name: 'Shilan',     dupr: 3.60,  gender: 'f' },
+  // MLP team tournament (DUPR unknown — fill in from Setup when known)
+  { name: 'Enrique',    dupr: null,  gender: 'm' },
+  { name: 'Michael Lee',dupr: null,  gender: 'm' },
+  { name: 'Enke',       dupr: null,  gender: 'm' },
+  { name: 'Sandy',      dupr: null,  gender: 'f' },
 ];
 
 function rrLoadRegistry() {
@@ -2271,9 +2276,21 @@ function rrLoadRegistry() {
   return RR_REGISTRY_SEED.map(p => ({ ...p }));
 }
 let rrRegistry = rrLoadRegistry();
-if (!localStorage.getItem('rr_registry')) {
-  localStorage.setItem('rr_registry', JSON.stringify(rrRegistry));
-}
+// Ensure every seed name exists in the registry (adds names introduced after a
+// user's initial seed). Preserves existing entries and any overrides.
+(function rrMergeSeed() {
+  const have = new Set(rrRegistry.map(e => (e && e.name || '').toLowerCase()));
+  let added = 0;
+  RR_REGISTRY_SEED.forEach(p => {
+    if (!have.has(p.name.toLowerCase())) { rrRegistry.push({ ...p }); added++; }
+  });
+  if (added > 0) {
+    rrRegistry.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    localStorage.setItem('rr_registry', JSON.stringify(rrRegistry));
+  } else if (!localStorage.getItem('rr_registry')) {
+    localStorage.setItem('rr_registry', JSON.stringify(rrRegistry));
+  }
+})();
 
 function rrSaveRegistry() {
   localStorage.setItem('rr_registry', JSON.stringify(rrRegistry));
