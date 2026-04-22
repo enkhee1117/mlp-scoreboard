@@ -3169,6 +3169,7 @@ function rrInitSync() {
       if (Array.isArray(data) && data.length) {
         rrArchive = data;
         localStorage.setItem('rr_archive', JSON.stringify(rrArchive));
+        if (tournamentMode === 'rr' && (rrView === 'history' || document.getElementById('settings-overlay'))) render();
       }
     })
     .catch(()=>{});
@@ -3195,6 +3196,7 @@ function rrInitSync() {
       if (Array.isArray(data)) {
         rrGameLog = data;
         localStorage.setItem('rr_game_log', JSON.stringify(rrGameLog));
+        if (tournamentMode === 'rr' && rrView === 'history') render();
       }
     })
     .catch(()=>{});
@@ -5241,9 +5243,11 @@ function rrAllHistoryEntries() {
 
 // Aggregate per-player stats across rrGameLog + archived tournaments. Matches
 // by case-insensitive name (both sources store/compute denormalized names).
-function rrCareerStats() {
+// Accepts an optional entries array; defaults to the full unified history.
+function rrCareerStats(entries) {
   const stats = {}; // { lcName -> { name, gp, gw, pf, pa } }
-  rrAllHistoryEntries().forEach(e => {
+  const src = entries || rrAllHistoryEntries();
+  src.forEach(e => {
     if (!e || !e.team1Names || !e.team2Names) return;
     const s1 = e.s1 || 0, s2 = e.s2 || 0;
     const t1Won = e.winner === 't1';
@@ -5275,11 +5279,33 @@ function rrCareerStats() {
 }
 
 let rrHistoryView = 'games'; // 'games' | 'career'
+let rrHistoryTournamentFilter = 'all'; // 'all' | tournamentId
 function rrSetHistoryView(v) { rrHistoryView = v; render(); }
+function rrSetHistoryTournamentFilter(id) { rrHistoryTournamentFilter = id || 'all'; render(); }
 
 function rrRenderHistory() {
-  const allEntries = rrAllHistoryEntries();
-  if (allEntries.length === 0) {
+  const allEntriesRaw = rrAllHistoryEntries();
+  // Build a tournament list (distinct ids) for the filter dropdown. "Current"
+  // = in-progress live tournament (rrState.id); archived ones listed by
+  // archivedAt desc.
+  const tournaments = [];
+  const seen = new Set();
+  rrGameLog.forEach(e => {
+    const id = e.tournamentId || 'current';
+    if (seen.has(id)) return;
+    seen.add(id);
+    tournaments.push({ id, name: e.tournamentName || 'Round Robin', ts: e.savedAt || 0 });
+  });
+  rrArchive.forEach(t => {
+    if (!t || !t.id || seen.has(t.id)) return;
+    seen.add(t.id);
+    tournaments.push({ id: t.id, name: t.name || 'Round Robin', ts: t.archivedAt || t.createdAt || 0 });
+  });
+  tournaments.sort((a, b) => b.ts - a.ts);
+  const allEntries = rrHistoryTournamentFilter === 'all'
+    ? allEntriesRaw
+    : allEntriesRaw.filter(e => (e.tournamentId || 'current') === rrHistoryTournamentFilter);
+  if (allEntriesRaw.length === 0) {
     return `
       <div class="rr-page">
         <div class="rr-header">
@@ -5345,7 +5371,7 @@ function rrRenderHistory() {
         </div>
       </div>`;
   }).join('');
-  const career = rrCareerStats();
+  const career = rrCareerStats(allEntries);
   const careerRows = career.map((s, i) => {
     const pct = s.gp > 0 ? Math.round(s.winPct * 100) : 0;
     const diffColor = s.diff > 0 ? '#4ade80' : (s.diff < 0 ? '#f87171' : '#888');
@@ -5359,11 +5385,23 @@ function rrRenderHistory() {
         <div style="color:${diffColor};font-weight:700;text-align:right">${diffStr}</div>
       </div>`;
   }).join('');
+  const tournamentOptions = tournaments.map(t => {
+    const when = t.ts ? ' · ' + new Date(t.ts).toLocaleDateString() : '';
+    return `<option value="${escapeHtml(t.id)}" ${rrHistoryTournamentFilter===t.id?'selected':''}>${escapeHtml(t.name)}${when}</option>`;
+  }).join('');
+  const filterBar = tournaments.length > 1 ? `
+    <div style="padding:4px 12px 0">
+      <select class="select-input" style="width:100%;font-weight:700" onchange="rrSetHistoryTournamentFilter(this.value)">
+        <option value="all" ${rrHistoryTournamentFilter==='all'?'selected':''}>All tournaments · ${tournaments.length}</option>
+        ${tournamentOptions}
+      </select>
+    </div>` : '';
   const tabBar = `
     <div style="padding:8px 12px 4px;display:flex;gap:6px">
       <button onclick="rrSetHistoryView('games')" style="flex:1;padding:9px;background:${rrHistoryView==='games'?'#fff':'#1a1a1a'};color:${rrHistoryView==='games'?'#000':'#ddd'};border:1px solid #2a2a2a;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">Games</button>
       <button onclick="rrSetHistoryView('career')" style="flex:1;padding:9px;background:${rrHistoryView==='career'?'#fff':'#1a1a1a'};color:${rrHistoryView==='career'?'#000':'#ddd'};border:1px solid #2a2a2a;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">Career · ${career.length}</button>
-    </div>`;
+    </div>
+    ${filterBar}`;
   const body = rrHistoryView === 'career'
     ? (career.length === 0
         ? `<div style="padding:24px;text-align:center;color:#666;font-size:13px">No career stats yet.</div>`
@@ -5377,11 +5415,17 @@ function rrRenderHistory() {
           ${rows}
           ${rrGameLog.length > 0 ? `<button onclick="rrGameLogClearAll()" style="width:100%;margin-top:12px;padding:10px;background:#1a1010;border:1px solid #3a1a1a;border-radius:9px;color:#f87171;font-size:12px;font-weight:700;cursor:pointer">Clear ${rrGameLog.length} saved game${rrGameLog.length===1?'':'s'} (keeps archived tournaments)</button>` : ''}
         </div>`;
+  const filterLabel = rrHistoryTournamentFilter === 'all'
+    ? null
+    : (tournaments.find(t => t.id === rrHistoryTournamentFilter) || { name: 'Selected tournament' }).name;
+  const subhead = rrHistoryView === 'career'
+    ? (filterLabel ? `Per-player record for ${escapeHtml(filterLabel)}.` : 'Per-player record across all saved games + archived tournaments.')
+    : (filterLabel ? `${allEntries.length} games in ${escapeHtml(filterLabel)}.` : `${allEntriesRaw.length} total · ${rrGameLog.length} saved from resets, ${allEntriesRaw.length - rrGameLog.length} from archived tournaments.`);
   return `
     <div class="rr-page">
       <div class="rr-header">
-        <h1>Previous Games · ${allEntries.length}</h1>
-        <p>${rrHistoryView === 'career' ? 'Per-player record across all saved games + archived tournaments.' : `${allEntries.length} total · ${rrGameLog.length} saved from resets, ${allEntries.length - rrGameLog.length} from archived tournaments.`}</p>
+        <h1>Previous Games · ${allEntries.length}${rrHistoryTournamentFilter!=='all'?` / ${allEntriesRaw.length}`:''}</h1>
+        <p>${subhead}</p>
       </div>
       ${tabBar}
       ${body}
