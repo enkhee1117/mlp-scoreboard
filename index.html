@@ -3020,16 +3020,6 @@ function rrUpdateConfig(key, val) {
   if (!isNaN(n) && n > 0) { rrState[key] = n; rrSave(); render(); }
 }
 function rrUpdateName(name) { rrState.name = name || 'Tournament'; rrSave(); }
-function rrLoadApr19Players() {
-  const hasAny = rrState.players.length > 0 || rrState.games.length > 0;
-  if (hasAny && !confirm('Replace current players with the 12 Apr 19 players and clear any generated games?')) return;
-  rrState.players = RR_DEFAULT_PLAYERS.map(p => ({ ...p }));
-  rrState.genAlgo = 'random';
-  rrClearSchedule();
-  // Identity may now point at a different player — clear it.
-  if (myIdentity !== null && myIdentity >= rrState.players.length) setIdentity(null);
-  rrSave(); render();
-}
 function rrLoadMensSunPlayers() {
   const hasAny = rrState.players.length > 0 || rrState.games.length > 0;
   if (hasAny && !confirm("Replace current players with the 12 Sunday Men's players and clear any generated games?")) return;
@@ -3546,10 +3536,7 @@ function rrRenderSetup() {
       </div>
 
       <div class="rr-subsection-label">Players · ${rrState.players.length}</div>
-      <div style="padding: 0 12px 8px;display:flex;flex-direction:column;gap:6px">
-        <button onclick="rrLoadApr19Players()" style="width:100%;padding:11px;background:#1a2a3f;border:1px solid #3a5f8a;border-radius:9px;color:#60a5fa;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.3px">
-          ⬇ Load Apr 19 Players (12 with DUPR)
-        </button>
+      <div style="padding: 0 12px 8px">
         <button onclick="rrLoadMensSunPlayers()" style="width:100%;padding:11px;background:#1a3f2a;border:1px solid #3a8a5f;border-radius:9px;color:#4ade80;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.3px">
           ⬇ Load Sunday Men's Players (12, High-Low pairing)
         </button>
