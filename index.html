@@ -843,7 +843,7 @@ function showSetupOverlay() {
 }
 
 // Build stamp — bumped manually so a stale-cache version is visible at a glance.
-const APP_BUILD = 'b39';
+const APP_BUILD = 'b40';
 function renderSyncBar() {
   const bar = document.getElementById('sync-status-bar');
   if (!bar) return;
@@ -2438,6 +2438,9 @@ function defaultRRState() {
     gamesPerPlayer: 6,
     numCourts: 3,
     genAlgo: 'random',
+    // Fixed-partner mode pairs: array of [globalIdx, globalIdx]. Empty until
+    // the organizer chooses Fixed Partners and defines the pairs.
+    partnerships: [],
     games: [],
     draft: { picks: {} },
     semi1: null, semi2: null, gold: null, bronze: null,
@@ -2455,14 +2458,26 @@ function rrMigrateState(s) {
   if (!s || typeof s !== 'object') return defaultRRState();
   const d = defaultRRState();
   if (!Array.isArray(s.players) || s.players.length < 4) s.players = d.players;
-  // Convert legacy string players -> { name, dupr: null, dropped: false }
+  // Convert legacy string players -> { name, dupr, dropped, gender }. Preserve
+  // gender on existing object players so it survives sync/reload round-trips.
   s.players = s.players.map(p => {
-    if (typeof p === 'string') return { name: p, dupr: null, dropped: false };
-    if (p && typeof p === 'object') return { name: p.name || '?', dupr: typeof p.dupr==='number'?p.dupr:null, dropped: !!p.dropped };
-    return { name: '?', dupr: null, dropped: false };
+    if (typeof p === 'string') return { name: p, dupr: null, dropped: false, gender: null };
+    if (p && typeof p === 'object') return {
+      name: p.name || '?',
+      dupr: typeof p.dupr === 'number' ? p.dupr : null,
+      dropped: !!p.dropped,
+      gender: (p.gender === 'm' || p.gender === 'f') ? p.gender : null,
+    };
+    return { name: '?', dupr: null, dropped: false, gender: null };
   });
   if (typeof s.gamesPerPlayer !== 'number' || s.gamesPerPlayer < 1) s.gamesPerPlayer = d.gamesPerPlayer;
   if (typeof s.numCourts !== 'number' || s.numCourts < 1) s.numCourts = d.numCourts;
+  if (typeof s.genAlgo !== 'string') s.genAlgo = d.genAlgo;
+  if (!Array.isArray(s.partnerships)) s.partnerships = [];
+  // Sanity-filter partnerships to valid 2-element index pairs within range.
+  s.partnerships = s.partnerships
+    .filter(p => Array.isArray(p) && p.length === 2 && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[0] !== p[1] && p[0] >= 0 && p[1] >= 0 && p[0] < s.players.length && p[1] < s.players.length)
+    .map(p => p.slice());
   if (!Array.isArray(s.games)) s.games = [];
   if (!s.draft || typeof s.draft !== 'object') s.draft = { picks: {} };
   if (!s.draft.picks || typeof s.draft.picks !== 'object') s.draft.picks = {};
@@ -2817,9 +2832,11 @@ function showSettings() {
     return `<option value="${i}"${sel}>${nm}</option>`;
   }).join('');
   const modeLabels = { mlp:'MLP', rr:'Round Robin', ppa:'PPA' };
-  // MLP hidden — keeping the code path & data intact, but only RR and PPA
-  // surface in the picker. Re-add 'mlp' here if you want it back.
-  const modeButtons = ['rr','ppa'].map(m => {
+  // MLP and PPA hidden from the picker — RR is the only surfaced mode now.
+  // PPA's "fixed partners" use case is covered by Round Robin → 🔒 Fixed
+  // Partners algorithm. Code paths and data for both modes are intact;
+  // re-add their keys to this array to bring the picker entries back.
+  const modeButtons = ['rr'].map(m => {
     const active = (tournamentMode === m) ? 'background:#fff;color:#000' : 'background:#1a1a1a;color:#ddd';
     return `<button onclick="setTournamentMode('${m}')" style="flex:1;padding:10px 6px;border:1px solid #2a2a2a;border-radius:8px;font-size:13px;font-weight:700;${active}">${modeLabels[m]}</button>`;
   }).join('');
@@ -3258,12 +3275,103 @@ function rrShuffle(arr) {
 // the one with the lowest total penalty: partner repeats, opponent repeats, and DUPR
 // imbalance within each game. Within a game, teams are balanced by "snake" pairing
 // (high+low vs mid+mid) so the sum of DUPRs on each side is as close as possible.
-function rrGenerateGames(players, numGames, numCourts, mode) {
+// Round-robin schedule for K pre-defined pairs using the circle method.
+// Each pair plays every other pair once per K-1 schedule rounds; the
+// matchup sequence wraps if numGames exceeds the unique-matchup count.
+function rrFixedScheduleGenerate(partnerships, numGames, perRound) {
+  const K = (partnerships || []).length;
+  if (K < 2) return [];
+  // Add a ghost pair (== K) when K is odd so the rotation has an even count.
+  // The pair facing the ghost in a given round simply sits out that round.
+  const isOdd = K % 2 !== 0;
+  const n = isOdd ? K + 1 : K;
+  const arr = Array.from({ length: n }, (_, i) => i);
+  const rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const round = [];
+    for (let i = 0; i < n / 2; i++) {
+      const a = arr[i];
+      const b = arr[n - 1 - i];
+      // Skip the ghost (index === K) — its opponent gets a bye that round.
+      if (a < K && b < K) round.push([a, b]);
+    }
+    rounds.push(round);
+    // Rotate: keep arr[0] fixed, move arr[last] into arr[1].
+    const last = arr.pop();
+    arr.splice(1, 0, last);
+  }
+  const matchupSeq = [];
+  rounds.forEach(rnd => rnd.forEach(m => matchupSeq.push(m)));
+  if (matchupSeq.length === 0) return [];
+  const games = [];
+  for (let i = 0; i < numGames; i++) {
+    const [a, b] = matchupSeq[i % matchupSeq.length];
+    games.push({
+      i,
+      round: Math.floor(i / perRound) + 1,
+      court: (i % perRound) + 1,
+      team1: partnerships[a].slice(),
+      team2: partnerships[b].slice(),
+      s1: 0, s2: 0, done: false, winner: null,
+    });
+  }
+  return games;
+}
+
+// True when partnerships cover every active player exactly once and reference
+// only valid global indices.
+function rrPartnershipsValid(activeIdxs) {
+  const activeSet = new Set(activeIdxs);
+  if (!Array.isArray(rrState.partnerships)) return false;
+  if (rrState.partnerships.length * 2 !== activeIdxs.length) return false;
+  const seen = new Set();
+  for (const pair of rrState.partnerships) {
+    if (!Array.isArray(pair) || pair.length !== 2) return false;
+    const [a, b] = pair;
+    if (a === b || !activeSet.has(a) || !activeSet.has(b)) return false;
+    if (seen.has(a) || seen.has(b)) return false;
+    seen.add(a); seen.add(b);
+  }
+  return seen.size === activeIdxs.length;
+}
+
+// Setters used by the partnerships UI.
+function rrSetPartnership(pairIdx, slot, playerIdx) {
+  const i = parseInt(playerIdx);
+  if (!Array.isArray(rrState.partnerships)) rrState.partnerships = [];
+  while (rrState.partnerships.length <= pairIdx) rrState.partnerships.push([null, null]);
+  if (!Array.isArray(rrState.partnerships[pairIdx])) rrState.partnerships[pairIdx] = [null, null];
+  rrState.partnerships[pairIdx][slot] = (Number.isInteger(i) && i >= 0) ? i : null;
+  rrSave(); render();
+}
+function rrAutoPairFromRoster() {
+  const active = rrState.players.map((p, i) => p && !p.dropped ? i : -1).filter(i => i >= 0);
+  if (active.length % 2 !== 0) { toast('Need an even number of active players to auto-pair.', 2200); return; }
+  const pairs = [];
+  for (let i = 0; i < active.length; i += 2) pairs.push([active[i], active[i + 1]]);
+  rrState.partnerships = pairs;
+  rrSave(); render();
+  toast(`Paired ${pairs.length} teams in roster order`, 1800);
+}
+function rrClearPartnerships() {
+  if (rrState.partnerships.length && !confirm('Clear all partnerships?')) return;
+  rrState.partnerships = [];
+  rrSave(); render();
+}
+
+function rrGenerateGames(players, numGames, numCourts, mode, partnerships) {
   mode = mode || 'random';
   const P = players.length;
   const perRound = Math.min(numCourts, Math.floor(P / 4));
   if (perRound < 1) return [];
   const totalRounds = Math.ceil(numGames / perRound);
+
+  // Fixed-partners mode runs a deterministic pair-vs-pair round-robin schedule
+  // (circle method) — no random search, no penalty scoring needed since the
+  // partnerships are already specified by the organizer.
+  if (mode === 'fixed') {
+    return rrFixedScheduleGenerate(partnerships, numGames, perRound);
+  }
 
   // Cache DUPRs for scoring (missing DUPR = 3.5 fallback so it doesn't dominate).
   const duprs = players.map(p => {
@@ -3450,12 +3558,13 @@ function rrLoadMensSunPlayers() {
   rrState.players = RR_MENS_SUN_PLAYERS.map(p => ({ ...p }));
   rrState.name = "Men's Round Robin";
   rrState.genAlgo = 'hilo';
+  rrState.partnerships = [];
   rrClearSchedule();
   if (myIdentity !== null && myIdentity >= rrState.players.length) setIdentity(null);
   rrSave(); render();
 }
 function rrSetGenAlgo(algo) {
-  if (algo !== 'random' && algo !== 'hilo') return;
+  if (!['random','hilo','mixed','fixed'].includes(algo)) return;
   rrState.genAlgo = algo;
   rrSave(); render();
 }
@@ -3543,7 +3652,17 @@ function rrGenerateAll() {
       toast(`Mixed needs equal M/F (have ${males}M/${females}F) — using Random.`, 3000);
     }
   }
-  const localGames = rrGenerateGames(activePlayers, total, rrState.numCourts, algo);
+  let localPartnerships = null;
+  if (algo === 'fixed') {
+    if (!rrPartnershipsValid(activeIdxs)) {
+      algo = 'random';
+      toast('Fixed Partners needs every active player paired exactly once — falling back to Random.', 3500);
+    } else {
+      // Translate global → local indices for the generator's index space.
+      localPartnerships = rrState.partnerships.map(([gA, gB]) => [activeIdxs.indexOf(gA), activeIdxs.indexOf(gB)]);
+    }
+  }
+  const localGames = rrGenerateGames(activePlayers, total, rrState.numCourts, algo, localPartnerships);
   rrState.games = localGames.map(g => ({
     ...g,
     team1: (g.team1 || []).map(li => activeIdxs[li]),
@@ -4019,6 +4138,61 @@ function rrGameCard(g, gameKey, title) {
   `;
 }
 
+// HTML for the "Partnerships" section shown only when Fixed Partners is the
+// selected algorithm. N/2 rows of two dropdowns each. Players already used in
+// any pair are disabled in subsequent dropdowns to prevent duplicates.
+function rrPartnershipsSectionHtml() {
+  const active = rrState.players
+    .map((p, i) => ({ p, i }))
+    .filter(x => x.p && !x.p.dropped);
+  const numPairs = active.length / 2;
+  const partnerships = rrState.partnerships || [];
+  // Set of indices already used elsewhere — for greying out duplicates.
+  const usedAt = {}; // playerIdx -> "pairIdx,slot"
+  partnerships.forEach((pair, pi) => {
+    if (!pair) return;
+    pair.forEach((idx, slot) => {
+      if (Number.isInteger(idx)) usedAt[idx] = `${pi},${slot}`;
+    });
+  });
+  const optsFor = (sel, pi, slot) => {
+    const opts = ['<option value="">— pick —</option>'];
+    active.forEach(({ p, i }) => {
+      const usedKey = usedAt[i];
+      const usedElsewhere = usedKey && usedKey !== `${pi},${slot}`;
+      const dupr = (typeof p.dupr === 'number') ? ` (${p.dupr.toFixed(2)})` : '';
+      opts.push(`<option value="${i}" ${i===sel?'selected':''} ${usedElsewhere?'disabled':''}>${escapeHtml(p.name||('Player '+(i+1)))}${dupr}${usedElsewhere?' · in use':''}</option>`);
+    });
+    return opts.join('');
+  };
+  const rows = [];
+  for (let pi = 0; pi < numPairs; pi++) {
+    const pair = partnerships[pi] || [null, null];
+    rows.push(`
+      <div style="display:grid;grid-template-columns:60px 1fr 14px 1fr;gap:6px;align-items:center;margin-bottom:6px">
+        <div style="color:#888;font-size:11px;font-weight:800;letter-spacing:0.5px">Pair ${pi+1}</div>
+        <select class="select-input" onchange="rrSetPartnership(${pi}, 0, this.value)">${optsFor(pair[0], pi, 0)}</select>
+        <div style="color:#555;text-align:center;font-size:11px">+</div>
+        <select class="select-input" onchange="rrSetPartnership(${pi}, 1, this.value)">${optsFor(pair[1], pi, 1)}</select>
+      </div>`);
+  }
+  const valid = rrPartnershipsValid(active.map(x => x.i));
+  const validPill = valid
+    ? `<span style="color:#4ade80;font-size:11px;font-weight:700">✓ All ${active.length} players paired</span>`
+    : `<span style="color:#f0a070;font-size:11px;font-weight:700">⚠ Pair every active player exactly once</span>`;
+  return `
+    <div class="rr-config-label" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <span>Partnerships · ${numPairs}</span>
+      ${validPill}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="rrAutoPairFromRoster()" style="flex:1;padding:8px;background:#1a3f2a;border:1px solid #3a8a5f;border-radius:8px;color:#4ade80;font-size:12px;font-weight:700;cursor:pointer">⚡ Auto-pair (roster order)</button>
+      <button onclick="rrClearPartnerships()" style="flex:0 0 auto;padding:8px 12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#888;font-size:12px;font-weight:700;cursor:pointer">Clear</button>
+    </div>
+    ${rows.join('')}
+  `;
+}
+
 function rrRenderSetup() {
   const activeCount = rrState.players.filter(p => p && !p.dropped).length;
   const canRemove = rrState.players.length > 4;
@@ -4124,10 +4298,12 @@ function rrRenderSetup() {
             const males = activeList.filter(p => p.gender === 'm').length;
             const females = activeList.filter(p => p.gender === 'f').length;
             const mixedOk = males === females && males >= 2;
+            const fixedOk = activeCount >= 4 && activeCount % 2 === 0;
             return [
               ['random','🎲 Random','Balanced random partners', false],
               ['hilo','⚖️ High-Low','Top ½ DUPR pairs with bottom ½', activeCount % 2 !== 0],
               ['mixed','👫 Mixed Doubles', mixedOk ? 'Male pairs with female' : `Need equal M/F (have ${males}M/${females}F)`, !mixedOk],
+              ['fixed','🔒 Fixed Partners','You define the pairs · pair-vs-pair RR', !fixedOk],
             ].map(([val,label,sub,disabled]) => {
               const active = (rrState.genAlgo || 'random') === val;
               const bg = active ? '#fff' : '#1a1a1a';
@@ -4141,7 +4317,8 @@ function rrRenderSetup() {
             }).join('');
           })()}
         </div>
-        ${activeCount % 2 !== 0 ? `<div style="font-size:11px;color:#888;margin:6px 4px 0">High-Low / Mixed require an even player count.</div>` : ''}
+        ${activeCount % 2 !== 0 ? `<div style="font-size:11px;color:#888;margin:6px 4px 0">High-Low / Mixed / Fixed Partners require an even player count.</div>` : ''}
+        ${(rrState.genAlgo === 'fixed' && activeCount % 2 === 0) ? rrPartnershipsSectionHtml() : ''}
         ${rrState.gamesPerPlayer >= activeCount - 1 && activeCount >= 4 ? `
           <div style="margin:8px 4px 0;padding:10px 12px;background:#2a1f0a;border:1px solid #4a3810;border-radius:8px;color:#f0a070;font-size:12px;line-height:1.5">
             ⚠️ ${rrState.gamesPerPlayer} games/player with only ${activeCount} players means each player has ${activeCount - 1} possible partner${activeCount-1===1?'':'s'} — <strong>partner repeats are unavoidable</strong>. Lower games/player or add players to guarantee unique partners.
