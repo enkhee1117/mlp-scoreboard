@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MLP Scoreboard</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -839,13 +842,15 @@ function showSetupOverlay() {
   document.body.appendChild(el);
 }
 
+// Build stamp — bumped manually so a stale-cache version is visible at a glance.
+const APP_BUILD = 'b39';
 function renderSyncBar() {
   const bar = document.getElementById('sync-status-bar');
   if (!bar) return;
   const cls = syncStatus==='ok'?'sync-connected':syncStatus==='error'?'sync-disconnected':'sync-pending';
   const label = syncStatus==='ok'?'Live sync on':syncStatus==='error'?'Sync error':syncStatus==='off'?'Local only':'Connecting…';
   bar.className = 'sync-bar ' + cls;
-  bar.innerHTML = `<span><span class="sync-dot"></span><span class="sync-label">${label}</span></span>`;
+  bar.innerHTML = `<span><span class="sync-dot"></span><span class="sync-label">${label}</span></span><span style="color:#444;font-size:10px;margin-left:8px">${APP_BUILD}</span>`;
 }
 
 let state = loadState();
