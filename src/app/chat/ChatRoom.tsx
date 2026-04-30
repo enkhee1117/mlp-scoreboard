@@ -71,23 +71,23 @@ export function ChatRoom({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-dark-bg p-4">
         {messages.map((m) => {
           const p = profiles[m.user_id];
           const mine = m.user_id === meId;
           const name = p?.display_name ?? (mine ? meName : 'unknown');
           return (
             <div key={m.id} className={`flex gap-2 ${mine ? 'flex-row-reverse' : ''}`}>
-              <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-neutral-700">
+              <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border border-border-dark bg-slate-700">
                 {p?.avatar_url && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.avatar_url} alt="" className="h-full w-full object-cover" />
                 )}
               </div>
               <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                mine ? 'bg-white text-black' : 'bg-neutral-800 text-white'
+                mine ? 'border border-volt/20 bg-volt/10 text-volt' : 'border border-border-dark bg-card-bg text-white'
               }`}>
-                <div className={`mb-0.5 text-xs ${mine ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                <div className={`mb-0.5 text-xs ${mine ? 'text-volt/70' : 'text-text-muted'}`}>
                   {name}
                 </div>
                 <div className="whitespace-pre-wrap break-words">{m.content}</div>
@@ -96,11 +96,11 @@ export function ChatRoom({
           );
         })}
         {messages.length === 0 && (
-          <p className="py-8 text-center text-sm text-neutral-500">No messages yet — say hi.</p>
+          <p className="py-8 text-center text-sm text-text-muted">No messages yet - say hi.</p>
         )}
       </div>
 
-      <form onSubmit={send} className="flex gap-2 border-t border-neutral-800 p-3">
+      <form onSubmit={send} className="flex gap-2 border-t border-border-dark bg-card-bg p-3">
         <input
           className="input"
           placeholder={meId ? 'Message #general' : 'Sign in to send messages'}

@@ -6,7 +6,7 @@ export default async function ScoreboardPage() {
     <div className="-mx-4 -my-6 h-[calc(100vh-3rem)]">
       <iframe
         src="/legacy/index.html"
-        title="MLP Scoreboard (legacy)"
+        title="TourneyPal (legacy scoreboard)"
         className="h-full w-full border-0"
       />
     </div>

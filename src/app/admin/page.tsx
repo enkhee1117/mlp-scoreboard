@@ -12,8 +12,8 @@ export default async function AdminPage({
   if (!me || (me.role !== 'admin' && me.role !== 'organizer')) {
     return (
       <div className="card max-w-xl">
-        <h1 className="text-2xl font-bold">Admin</h1>
-        <p className="mt-2 text-neutral-400">
+        <h1 className="font-display text-2xl font-bold">Admin</h1>
+        <p className="mt-2 text-text-muted">
           Admin tools are currently available only to organizer/admin accounts.
         </p>
       </div>
@@ -35,8 +35,8 @@ export default async function AdminPage({
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Admin</h1>
-        <span className="text-xs text-neutral-500">Signed in as {me.role}</span>
+        <h1 className="font-display text-2xl font-bold">Admin</h1>
+        <span className="text-xs text-text-muted">Signed in as {me.role}</span>
       </header>
 
       {sp.error && (
@@ -66,7 +66,7 @@ export default async function AdminPage({
 
         <div className="mt-5 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+            <thead className="text-left text-xs uppercase tracking-wider text-text-muted">
               <tr>
                 <th className="py-2">Email</th>
                 <th>Role</th>
@@ -81,17 +81,17 @@ export default async function AdminPage({
                 const status = inv.accepted_at ? 'accepted' : expired ? 'expired' : 'pending';
                 const link = `${baseUrl}/signup?token=${inv.token}`;
                 return (
-                  <tr key={inv.id} className="border-t border-neutral-800">
+                  <tr key={inv.id} className="border-t border-border-dark">
                     <td className="py-2">{inv.email}</td>
                     <td>{inv.role}</td>
                     <td>
                       <span className={
                         status === 'accepted' ? 'text-emerald-400'
                         : status === 'pending' ? 'text-amber-400'
-                        : 'text-neutral-500'
+                        : 'text-text-muted'
                       }>{status}</span>
                     </td>
-                    <td className="font-mono text-xs text-neutral-400">
+                    <td className="font-mono text-xs text-text-muted">
                       {!inv.accepted_at && !expired ? (
                         <a href={link} className="underline" target="_blank" rel="noreferrer">copy link</a>
                       ) : '—'}
@@ -108,7 +108,7 @@ export default async function AdminPage({
                 );
               })}
               {invites.length === 0 && (
-                <tr><td className="py-3 text-neutral-500" colSpan={5}>No invites yet.</td></tr>
+                <tr><td className="py-3 text-text-muted" colSpan={5}>No invites yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -120,12 +120,12 @@ export default async function AdminPage({
           <h2 className="text-lg font-bold">People &amp; roles</h2>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+              <thead className="text-left text-xs uppercase tracking-wider text-text-muted">
                 <tr><th className="py-2">Name</th><th>Role</th><th>DUPR</th><th></th></tr>
               </thead>
               <tbody>
                 {profiles.map((p) => (
-                  <tr key={p.id} className="border-t border-neutral-800">
+                  <tr key={p.id} className="border-t border-border-dark">
                     <td className="py-2">{p.display_name ?? p.full_name ?? p.id.slice(0, 8)}</td>
                     <td>
                       <form action={setRole} className="flex items-center gap-2">
@@ -138,11 +138,11 @@ export default async function AdminPage({
                         <button className="btn btn-ghost !py-1 !px-2 text-xs" type="submit">save</button>
                       </form>
                     </td>
-                    <td className="text-neutral-400">
+                    <td className="text-text-muted">
                       {p.dupr_doubles ? `D ${p.dupr_doubles}` : '—'}{' '}
                       {p.dupr_singles ? `S ${p.dupr_singles}` : ''}
                     </td>
-                    <td className="text-right text-xs text-neutral-500">{p.gender ?? ''}</td>
+                    <td className="text-right text-xs text-text-muted">{p.gender ?? ''}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,44 +1,76 @@
 import Link from 'next/link';
 import { getProfile } from '@/lib/auth';
+import { MatchCard } from '@/components/ui/MatchCard';
 
 export default async function HomePage() {
   const profile = await getProfile();
 
-  if (!profile) {
-    return (
-      <div className="card max-w-xl">
-        <h1 className="text-2xl font-bold">MLP Scoreboard</h1>
-        <p className="mt-2 text-neutral-400">
-          Public mode is enabled while authentication is being fixed. You can browse the app
-          without signing in.
+  return (
+    <div className="space-y-6">
+      <section className="card relative overflow-hidden p-6">
+        <div className="absolute right-0 top-0 h-40 w-40 -translate-y-1/4 translate-x-1/4 rounded-full bg-volt/10 blur-3xl" />
+        <p className="text-xs font-semibold uppercase tracking-wider text-volt">Live Tournament Platform</p>
+        <h1 className="mt-2 font-display text-4xl font-bold tracking-tight sm:text-5xl">TourneyPal</h1>
+        <p className="mt-3 max-w-2xl text-text-muted">
+          Premium, dark-mode-first tournament interface for scoreboard updates, realtime chat,
+          player profiles, and staff operations.
         </p>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           <Link href="/scoreboard" className="btn btn-primary">Open scoreboard</Link>
           <Link href="/chat" className="btn btn-ghost">Open chat</Link>
+          <Link href="/profile" className="btn btn-ghost">Player profile</Link>
+          {(profile?.role === 'admin' || profile?.role === 'organizer') && (
+            <Link href="/admin" className="btn btn-ghost">
+              Admin
+            </Link>
+          )}
         </div>
-      </div>
-    );
-  }
+      </section>
 
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Link href="/scoreboard" className="card hover:border-neutral-600">
-        <h2 className="text-lg font-bold">Scoreboard</h2>
-        <p className="mt-1 text-sm text-neutral-400">Live tournament play.</p>
-      </Link>
-      <Link href="/chat" className="card hover:border-neutral-600">
-        <h2 className="text-lg font-bold">Chat</h2>
-        <p className="mt-1 text-sm text-neutral-400">Talk with other players in realtime.</p>
-      </Link>
-      <Link href="/profile" className="card hover:border-neutral-600">
-        <h2 className="text-lg font-bold">My profile</h2>
-        <p className="mt-1 text-sm text-neutral-400">Avatar, DUPR rating, gender, bio.</p>
-      </Link>
-      {(profile.role === 'admin' || profile.role === 'organizer') && (
-        <Link href="/admin" className="card hover:border-neutral-600">
-          <h2 className="text-lg font-bold">Admin</h2>
-          <p className="mt-1 text-sm text-neutral-400">Invite players, manage roles.</p>
-        </Link>
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-xl font-bold">Live Courts</h2>
+          <Link href="/scoreboard" className="text-sm font-semibold text-volt hover:text-volt-hover">View all</Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MatchCard
+            court="Center Court"
+            division="Men's Doubles Finals"
+            teamA="Johns / Johns"
+            scoreA={10}
+            teamB="Newman / Wright"
+            scoreB={8}
+            status="live"
+          />
+          <MatchCard
+            court="Court 2"
+            division="Women's Quarterfinal"
+            teamA="Waters / Parenteau"
+            scoreA={11}
+            teamB="Bright / Dizon"
+            scoreB={4}
+            status="live"
+          />
+          <MatchCard
+            court="Court 3"
+            division="Mixed Quarterfinal"
+            teamA="Johnson / Johnson"
+            scoreA={11}
+            teamB="Tardio / David"
+            scoreB={9}
+            status="final"
+          />
+        </div>
+      </section>
+
+      {!profile && (
+        <section className="card">
+          <h3 className="font-display text-lg font-semibold">Public Mode Enabled</h3>
+          <p className="mt-2 text-sm text-text-muted">
+            Authentication is temporarily disabled while magic link login is being fixed.
+            Everyone can access features for development and testing.
+          </p>
+        </section>
       )}
     </div>
   );

@@ -13,8 +13,8 @@ export default async function ProfilePage({
   if (!profile) {
     return (
       <div className="card max-w-xl">
-        <h1 className="text-xl font-bold">Profile</h1>
-        <p className="mt-2 text-neutral-400">
+        <h1 className="font-display text-xl font-bold">Profile</h1>
+        <p className="mt-2 text-text-muted">
           Authentication is temporarily disabled. Sign-in is not required for browsing features,
           but profile editing is unavailable while logged out.
         </p>
@@ -26,13 +26,13 @@ export default async function ProfilePage({
     <div className="grid gap-6 md:grid-cols-[260px_1fr]">
       <div className="card">
         <AvatarUpload userId={profile.id} initialUrl={profile.avatar_url} />
-        <p className="mt-3 text-xs text-neutral-500">
-          Role: <span className="text-neutral-300">{profile.role}</span>
+        <p className="mt-3 text-xs text-text-muted">
+          Role: <span className="text-slate-200">{profile.role}</span>
         </p>
       </div>
 
       <form action={saveProfile} className="card space-y-4">
-        <h1 className="text-xl font-bold">My profile</h1>
+        <h1 className="font-display text-xl font-bold">My profile</h1>
 
         {sp.saved && (
           <div className="rounded border border-emerald-700 bg-emerald-950 px-3 py-2 text-sm text-emerald-300">
@@ -85,7 +85,7 @@ export default async function ProfilePage({
         </div>
 
         <div className="flex items-center justify-between">
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-text-muted">
             Tip: paste your DUPR ID — your public DUPR profile lives at
             <span className="font-mono"> dashboard.dupr.com/dashboard/player/&lt;id&gt;</span>.
           </p>
