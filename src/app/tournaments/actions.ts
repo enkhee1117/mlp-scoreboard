@@ -3,168 +3,181 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
-import { generateRoundRobinDrafts, normalizeWhatsAppUrl } from '@/lib/tournaments';
+import { fieldInt, fieldString, formatPgError, type FormState } from '@/lib/forms';
+import {
+  normalizeWhatsAppUrl,
+  validateOptionalEmail,
+  validatePlayerCount,
+  validatePlayerName,
+  validateTournamentFormat,
+  validateTournamentName,
+  validateWhatsAppUrl,
+} from '@/lib/validation';
 
-export async function createTournament(formData: FormData) {
+async function getAuthedClient() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    redirect('/tournaments?error=Please%20sign%20in%20to%20create%20a%20tournament');
-  }
-
-  const name = String(formData.get('name') ?? '').trim();
-  const format = String(formData.get('format') ?? 'round_robin').trim() || 'round_robin';
-  const whatsappRaw = String(formData.get('whatsapp_group_url') ?? '');
-  const whatsapp_group_url = normalizeWhatsAppUrl(whatsappRaw);
-  const playerCountRaw = Number(formData.get('player_count') ?? 0);
-  const playerCount = Number.isFinite(playerCountRaw)
-    ? Math.max(0, Math.min(64, Math.trunc(playerCountRaw)))
-    : 0;
-
-  if (name.length < 3) {
-    redirect('/tournaments?error=Tournament%20name%20must%20be%20at%20least%203%20characters');
-  }
-  if (whatsappRaw.trim() && !whatsapp_group_url) {
-    redirect('/tournaments?error=WhatsApp%20link%20must%20be%20a%20valid%20chat.whatsapp.com%20URL');
-  }
-
-  const { data: created, error } = await supabase
-    .from('tournaments')
-    .insert({
-      owner_user_id: user.id,
-      name,
-      format,
-      whatsapp_group_url,
-    })
-    .select('id')
-    .single();
-
-  if (error || !created) {
-    redirect(`/tournaments?error=${encodeURIComponent(error?.message ?? 'Failed to create tournament')}`);
-  }
-
-  if (playerCount > 0) {
-    const placeholders = Array.from({ length: playerCount }, (_, i) => ({
-      tournament_id: created.id,
-      display_name: `Player ${i + 1}`,
-    }));
-    const { error: playerError } = await supabase.from('tournament_players').insert(placeholders);
-    if (playerError) {
-      redirect(`/tournaments/${created.id}?error=${encodeURIComponent('Tournament created, but adding placeholder players failed: ' + playerError.message)}`);
-    }
-  }
-
-  revalidatePath('/tournaments');
-  redirect(`/tournaments/${created.id}?ok=Tournament%20created`);
+  return { supabase, user };
 }
 
-export async function updateTournamentWhatsApp(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/tournaments?error=Please%20sign%20in');
+export async function createTournament(_prev: FormState, formData: FormData): Promise<FormState> {
+  const name = fieldString(formData, 'name');
+  const format = fieldString(formData, 'format') || 'round_robin';
+  const whatsappRaw = fieldString(formData, 'whatsapp_group_url');
+  const playerCount = fieldInt(formData, 'player_count', 0, 0, 64);
 
-  const tournamentId = String(formData.get('tournament_id') ?? '');
-  const raw = String(formData.get('whatsapp_group_url') ?? '');
-  const whatsapp_group_url = normalizeWhatsAppUrl(raw);
-  if (!tournamentId) redirect('/tournaments?error=Missing%20tournament%20id');
-  if (raw.trim() && !whatsapp_group_url) {
-    redirect(`/tournaments/${tournamentId}?error=Invalid%20WhatsApp%20group%20URL`);
-  }
+  const checks = [
+    validateTournamentName(name),
+    validateTournamentFormat(format),
+    validateWhatsAppUrl(whatsappRaw),
+    validatePlayerCount(playerCount),
+  ];
+  for (const c of checks) if (!c.ok) return { error: c.error };
 
-  const { error } = await supabase
-    .from('tournaments')
-    .update({ whatsapp_group_url })
-    .eq('id', tournamentId);
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in to create a tournament.' };
 
-  revalidatePath(`/tournaments/${tournamentId}`);
-  revalidatePath('/tournaments');
-  redirect(`/tournaments/${tournamentId}?ok=WhatsApp%20link%20saved`);
-}
-
-export async function renameTournamentPlayer(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/tournaments?error=Please%20sign%20in');
-
-  const tournamentId = String(formData.get('tournament_id') ?? '');
-  const playerId = String(formData.get('player_id') ?? '');
-  const displayName = String(formData.get('display_name') ?? '').trim();
-  if (!tournamentId || !playerId) redirect('/tournaments');
-  if (displayName.length < 2) {
-    redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent('Player name must be at least 2 characters')}`);
-  }
-
-  const { error } = await supabase
-    .from('tournament_players')
-    .update({ display_name: displayName })
-    .eq('id', playerId)
-    .eq('tournament_id', tournamentId);
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
-
-  revalidatePath(`/tournaments/${tournamentId}`);
-  redirect(`/tournaments/${tournamentId}?ok=Player%20updated`);
-}
-
-export async function addTournamentPlayer(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/tournaments?error=Please%20sign%20in');
-
-  const tournamentId = String(formData.get('tournament_id') ?? '');
-  const displayName = String(formData.get('display_name') ?? '').trim();
-  const emailRaw = String(formData.get('email') ?? '').trim().toLowerCase();
-  const email = emailRaw || null;
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent('Invalid email address')}`);
-  }
-  if (!tournamentId || displayName.length < 2) {
-    redirect(`/tournaments/${tournamentId}?error=Player%20name%20must%20be%20at%20least%202%20characters`);
-  }
-
-  const { error } = await supabase.from('tournament_players').insert({
-    tournament_id: tournamentId,
-    display_name: displayName,
-    email,
+  const { data: newId, error } = await supabase.rpc('app_create_tournament', {
+    p_name: name,
+    p_format: format,
+    p_whatsapp_group_url: normalizeWhatsAppUrl(whatsappRaw),
+    p_player_count: playerCount,
   });
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
 
-  revalidatePath(`/tournaments/${tournamentId}`);
-  redirect(`/tournaments/${tournamentId}?ok=Player%20added`);
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath('/tournaments');
+  revalidatePath('/');
+  redirect(`/tournaments/${newId as string}?ok=Tournament%20created`);
 }
 
-export async function generateRoundRobinMatches(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/tournaments?error=Please%20sign%20in');
+export async function updateTournament(_prev: FormState, formData: FormData): Promise<FormState> {
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const name = fieldString(formData, 'name');
+  const whatsappRaw = fieldString(formData, 'whatsapp_group_url');
 
-  const tournamentId = String(formData.get('tournament_id') ?? '');
-  if (!tournamentId) redirect('/tournaments?error=Missing%20tournament%20id');
+  if (!tournamentId) return { error: 'Missing tournament id.' };
+  const checks = [validateTournamentName(name), validateWhatsAppUrl(whatsappRaw)];
+  for (const c of checks) if (!c.ok) return { error: c.error };
 
-  const { data: players, error: playersError } = await supabase
-    .from('tournament_players')
-    .select('display_name')
-    .eq('tournament_id', tournamentId)
-    .order('created_at', { ascending: true });
-  if (playersError) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(playersError.message)}`);
-  if (!players || players.length < 2) {
-    redirect(`/tournaments/${tournamentId}?error=Add%20at%20least%202%20players%20before%20generating%20matches`);
-  }
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in to update this tournament.' };
 
-  const drafts = generateRoundRobinDrafts(players.map((p) => p.display_name));
-
-  const { error } = await supabase.from('matches').insert(
-    drafts.map((p) => ({
-      tournament_id: tournamentId,
-      round_label: p.round_label,
-      court_label: p.court_label,
-      team_a_label: p.team_a_label,
-      team_b_label: p.team_b_label,
-      created_by_user_id: user.id,
-    })),
-  );
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
+  const { error } = await supabase.rpc('app_update_tournament', {
+    p_tournament_id: tournamentId,
+    p_name: name,
+    p_whatsapp_group_url: normalizeWhatsAppUrl(whatsappRaw),
+  });
+  if (error) return { error: formatPgError(error) };
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  redirect(`/tournaments/${tournamentId}?ok=Matches%20generated`);
+  revalidatePath('/tournaments');
+  return { ok: 'Saved.' };
+}
+
+export async function addTournamentPlayer(_prev: FormState, formData: FormData): Promise<FormState> {
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const displayName = fieldString(formData, 'display_name');
+  const email = fieldString(formData, 'email');
+
+  if (!tournamentId) return { error: 'Missing tournament id.' };
+  for (const c of [validatePlayerName(displayName), validateOptionalEmail(email)]) {
+    if (!c.ok) return { error: c.error };
+  }
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  const { error } = await supabase.rpc('app_add_tournament_player', {
+    p_tournament_id: tournamentId,
+    p_display_name: displayName,
+    p_email: email || null,
+  });
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: 'Player added.' };
+}
+
+export async function renameTournamentPlayer(_prev: FormState, formData: FormData): Promise<FormState> {
+  const playerId = fieldString(formData, 'player_id');
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const displayName = fieldString(formData, 'display_name');
+
+  if (!playerId || !tournamentId) return { error: 'Missing identifiers.' };
+  const c = validatePlayerName(displayName);
+  if (!c.ok) return { error: c.error };
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  const { error } = await supabase.rpc('app_rename_tournament_player', {
+    p_player_id: playerId,
+    p_display_name: displayName,
+  });
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: 'Saved.' };
+}
+
+export async function removeTournamentPlayer(_prev: FormState, formData: FormData): Promise<FormState> {
+  const playerId = fieldString(formData, 'player_id');
+  const tournamentId = fieldString(formData, 'tournament_id');
+  if (!playerId || !tournamentId) return { error: 'Missing identifiers.' };
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  const { error } = await supabase.rpc('app_remove_tournament_player', { p_player_id: playerId });
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: 'Player removed.' };
+}
+
+export async function generateRoundRobinMatches(_prev: FormState, formData: FormData): Promise<FormState> {
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const courtCount = fieldInt(formData, 'court_count', 4, 1, 16);
+  if (!tournamentId) return { error: 'Missing tournament id.' };
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  const { data: count, error } = await supabase.rpc('app_generate_round_robin_matches', {
+    p_tournament_id: tournamentId,
+    p_court_count: courtCount,
+  });
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: `Generated ${count ?? 0} matches.` };
+}
+
+export async function scoreMatch(_prev: FormState, formData: FormData): Promise<FormState> {
+  const matchId = fieldString(formData, 'match_id');
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const aRaw = fieldString(formData, 'team_a_score');
+  const bRaw = fieldString(formData, 'team_b_score');
+  if (!matchId || !tournamentId) return { error: 'Missing identifiers.' };
+
+  const a = aRaw === '' ? null : Math.trunc(Number(aRaw));
+  const b = bRaw === '' ? null : Math.trunc(Number(bRaw));
+  if (a !== null && (!Number.isFinite(a) || a < 0 || a > 999)) return { error: 'Score must be 0-999.' };
+  if (b !== null && (!Number.isFinite(b) || b < 0 || b > 999)) return { error: 'Score must be 0-999.' };
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  const { error } = await supabase.rpc('app_score_match', {
+    p_match_id: matchId,
+    p_team_a_score: a,
+    p_team_b_score: b,
+  });
+  if (error) return { error: formatPgError(error) };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/scoreboard');
+  revalidatePath('/');
+  return { ok: 'Score saved.' };
 }

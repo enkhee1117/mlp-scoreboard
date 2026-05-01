@@ -1,18 +1,12 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { SubmitButton } from '@/components/ui/SubmitButton';
-import { setNewPassword } from './actions';
+import { ResetPasswordForm } from './_components/ResetPasswordForm';
 
-export default async function ResetPasswordPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const sp = await searchParams;
+export default async function ResetPasswordPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    redirect('/forgot-password?error=Reset%20link%20expired');
+    redirect('/forgot-password');
   }
 
   return (
@@ -22,42 +16,7 @@ export default async function ResetPasswordPage({
         Choose a new password for{' '}
         <span className="font-mono text-slate-200">{user.email}</span>.
       </p>
-
-      {sp.error && (
-        <div className="mt-4 rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm text-red-300">
-          {sp.error}
-        </div>
-      )}
-
-      <form action={setNewPassword} className="mt-4 space-y-3">
-        <div>
-          <label className="label" htmlFor="password">New password</label>
-          <input
-            className="input"
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoFocus
-            autoComplete="new-password"
-          />
-          <p className="mt-1 text-xs text-text-muted">At least 8 characters.</p>
-        </div>
-        <div>
-          <label className="label" htmlFor="confirm">Confirm password</label>
-          <input
-            className="input"
-            id="confirm"
-            name="confirm"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-          />
-        </div>
-        <SubmitButton className="btn btn-primary w-full" pendingLabel="Updating...">Update password</SubmitButton>
-      </form>
+      <ResetPasswordForm />
     </div>
   );
 }

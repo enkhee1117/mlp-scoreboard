@@ -25,35 +25,37 @@ describe('normalizeWhatsAppUrl', () => {
 });
 
 describe('generateRoundRobinDrafts', () => {
-  it('returns empty drafts when less than two players', () => {
+  it('returns empty drafts when fewer than two players', () => {
     expect(generateRoundRobinDrafts([])).toEqual([]);
     expect(generateRoundRobinDrafts(['Alice'])).toEqual([]);
   });
 
   it('generates n*(n-1)/2 matches', () => {
-    const players = ['A', 'B', 'C', 'D'];
-    const drafts = generateRoundRobinDrafts(players);
-    expect(drafts).toHaveLength(6);
+    expect(generateRoundRobinDrafts(['A', 'B', 'C', 'D'])).toHaveLength(6);
   });
 
-  it('contains all unique pairings exactly once', () => {
+  it('contains each unique pairing exactly once', () => {
     const drafts = generateRoundRobinDrafts(['A', 'B', 'C']);
-    const pairSet = new Set(drafts.map((d) => `${d.team_a_label}:${d.team_b_label}`));
-    expect(pairSet).toEqual(new Set(['A:B', 'A:C', 'B:C']));
+    const pairs = new Set(drafts.map((d) => `${d.team_a_label}:${d.team_b_label}`));
+    expect(pairs).toEqual(new Set(['A:B', 'A:C', 'B:C']));
   });
 
-  it('assigns rotating courts from 1 to 4', () => {
-    const drafts = generateRoundRobinDrafts(['A', 'B', 'C', 'D', 'E']);
-    const courts = drafts.slice(0, 8).map((d) => d.court_label);
-    expect(courts).toEqual([
-      'Court 1',
-      'Court 2',
-      'Court 3',
-      'Court 4',
-      'Court 1',
-      'Court 2',
-      'Court 3',
-      'Court 4',
-    ]);
+  it('rotates courts up to courtCount', () => {
+    const drafts = generateRoundRobinDrafts(['A', 'B', 'C', 'D', 'E'], 4);
+    const firstFourCourts = drafts.slice(0, 4).map((d) => d.court_label);
+    expect(firstFourCourts).toEqual(['Court 1', 'Court 2', 'Court 3', 'Court 4']);
+    expect(drafts[4]?.court_label).toBe('Court 1');
+  });
+
+  it('groups consecutive matches into rounds based on court count', () => {
+    const drafts = generateRoundRobinDrafts(['A', 'B', 'C', 'D', 'E'], 2);
+    expect(drafts[0]?.round_label).toBe('Round 1');
+    expect(drafts[1]?.round_label).toBe('Round 1');
+    expect(drafts[2]?.round_label).toBe('Round 2');
+  });
+
+  it('trims whitespace and drops empty player names', () => {
+    const drafts = generateRoundRobinDrafts(['  Alice ', '', 'Bob ']);
+    expect(drafts.map((d) => `${d.team_a_label}:${d.team_b_label}`)).toEqual(['Alice:Bob']);
   });
 });

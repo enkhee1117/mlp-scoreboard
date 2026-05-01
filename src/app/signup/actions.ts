@@ -2,23 +2,25 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { fieldString, type FormState } from '@/lib/forms';
+import { validateEmail, validatePassword } from '@/lib/validation';
 
 function safeNext(raw: string): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
   return raw;
 }
 
-export async function signUpWithPassword(formData: FormData) {
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+export async function signUpWithPassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const email = fieldString(formData, 'email').toLowerCase();
   const password = String(formData.get('password') ?? '');
-  const display_name = String(formData.get('display_name') ?? '').trim();
-  const next = safeNext(String(formData.get('next') ?? '/'));
+  const display_name = fieldString(formData, 'display_name');
+  const next = safeNext(fieldString(formData, 'next') || '/');
 
-  if (!email || !password || !display_name) {
-    redirect(`/signup?error=${encodeURIComponent('All fields are required')}`);
+  if (!display_name || display_name.length < 1) {
+    return { error: 'Display name is required.' };
   }
-  if (password.length < 8) {
-    redirect(`/signup?error=${encodeURIComponent('Password must be at least 8 characters')}`);
+  for (const c of [validateEmail(email), validatePassword(password)]) {
+    if (!c.ok) return { error: c.error };
   }
 
   const supabase = await createClient();
@@ -27,17 +29,10 @@ export async function signUpWithPassword(formData: FormData) {
     password,
     options: { data: { display_name } },
   });
+  if (error) return { error: error.message };
 
-  if (error) {
-    redirect(`/signup?error=${encodeURIComponent(error.message)}`);
-  }
-
-  // If email confirmation is required, no session is returned. Send the user
-  // to login with a confirmation message; otherwise they are already signed in.
   if (!data.session) {
-    redirect(
-      `/login?ok=${encodeURIComponent('Account created. Check your email to confirm, then sign in.')}`,
-    );
+    redirect(`/login?ok=${encodeURIComponent('Account created. Check your email to confirm, then sign in.')}`);
   }
 
   redirect(next);
