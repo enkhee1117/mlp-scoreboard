@@ -6,12 +6,18 @@ import { SubmitButton } from '@/components/ui/SubmitButton';
 import { FormStatus } from '@/components/ui/FormStatus';
 import { emptyFormState } from '@/lib/forms';
 
-type DivisionOption = { id: string; name: string; assignedPlayers: number };
+type DivisionOption = {
+  id: string;
+  name: string;
+  assignedPlayers: number;
+  pendingMatches: number;
+};
 
 type Props = {
   tournamentId: string;
   playerCount: number;
   openDivisionPlayerCount: number;
+  openPendingMatches: number;
   divisions: DivisionOption[];
 };
 
@@ -43,6 +49,7 @@ export function GenerateMatchesForm({
   tournamentId,
   playerCount,
   openDivisionPlayerCount,
+  openPendingMatches,
   divisions,
 }: Props) {
   const [state, formAction] = useActionState(generateMatches, emptyFormState);
@@ -50,11 +57,18 @@ export function GenerateMatchesForm({
   const [rounds, setRounds] = useState(5);
   const [courts, setCourts] = useState(2);
   const [divisionId, setDivisionId] = useState<string>('open');
+  const [confirmWipe, setConfirmWipe] = useState(false);
 
   const scopedPlayerCount = useMemo(() => {
     if (divisionId === 'open') return openDivisionPlayerCount;
     return divisions.find((d) => d.id === divisionId)?.assignedPlayers ?? 0;
   }, [divisionId, divisions, openDivisionPlayerCount]);
+
+  const scopedPendingMatches = useMemo(() => {
+    if (divisionId === 'open') return openPendingMatches;
+    return divisions.find((d) => d.id === divisionId)?.pendingMatches ?? 0;
+  }, [divisionId, divisions, openPendingMatches]);
+
   void playerCount; // total roster size displayed elsewhere
 
   const preview = useMemo(() => {
@@ -174,12 +188,41 @@ export function GenerateMatchesForm({
 
       <FormStatus state={state} />
 
-      <SubmitButton className="btn btn-primary" pendingLabel="Generating...">
+      {scopedPendingMatches > 0 && (
+        <div
+          role="alert"
+          className="space-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-amber-200"
+        >
+          <p>
+            <strong className="font-semibold">{scopedPendingMatches}</strong> pending match
+            {scopedPendingMatches === 1 ? '' : 'es'} in this scope will be{' '}
+            <strong className="font-semibold">deleted</strong> when you regenerate. Completed
+            matches stay put.
+          </p>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              name="confirm_wipe"
+              value="1"
+              checked={confirmWipe}
+              onChange={(e) => setConfirmWipe(e.target.checked)}
+              className="h-4 w-4 rounded border-border-dark bg-dark-bg accent-volt"
+            />
+            <span>I understand this will replace the existing schedule.</span>
+          </label>
+        </div>
+      )}
+
+      <SubmitButton
+        className="btn btn-primary"
+        disabled={scopedPendingMatches > 0 && !confirmWipe}
+        pendingLabel="Generating..."
+      >
         Generate {scopedPlayerCount > 0 ? `for ${scopedPlayerCount} players` : 'matches'}
       </SubmitButton>
       <p className="text-xs text-text-muted">
-        Heads up: regenerating wipes any matches that haven&rsquo;t been scored yet. Completed
-        matches stay put.
+        Tip: only unscored matches are wiped. Anything you&rsquo;ve already reported a result for
+        sticks around.
       </p>
     </form>
   );

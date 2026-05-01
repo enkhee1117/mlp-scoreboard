@@ -192,3 +192,109 @@ function sortTiedGroup(group: StandingRow[], allMatches: StandingsMatch[]) {
     return x.team.localeCompare(y.team);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Per-player standings.
+//
+// In rotating-partner formats every player swaps partners every round, so a
+// "team" is just a one-time pairing. The meaningful standings are individual:
+// who wins games regardless of who their partner happens to be.
+//
+// We split each team label on '&' (the convention used by all generators) and
+// attribute the team's record to each member. Head-to-head doesn't translate
+// cleanly across rotating partners, so player tiebreakers are: wins -> point
+// diff -> games won -> alphabetical.
+// ---------------------------------------------------------------------------
+export function computePlayerStandings(matches: StandingsMatch[]): StandingRow[] {
+  const rows = new Map<string, StandingRow>();
+
+  const ensure = (player: string): StandingRow => {
+    let row = rows.get(player);
+    if (!row) {
+      row = {
+        team: player,
+        matchesPlayed: 0,
+        matchWins: 0,
+        matchLosses: 0,
+        winPct: 0,
+        pointDiff: 0,
+        pointsFor: 0,
+        pointsAgainst: 0,
+        gamesWon: 0,
+        gamesLost: 0,
+      };
+      rows.set(player, row);
+    }
+    return row;
+  };
+
+  const splitPlayers = (label: string): string[] =>
+    label
+      .split('&')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  for (const m of matches) {
+    if (m.winner_side === null) continue;
+    const aPlayers = splitPlayers(m.team_a_label);
+    const bPlayers = splitPlayers(m.team_b_label);
+    if (aPlayers.length === 0 || bPlayers.length === 0) continue;
+
+    for (const ap of aPlayers) {
+      const r = ensure(ap);
+      r.matchesPlayed += 1;
+      r.pointsFor += m.team_a_score ?? 0;
+      r.pointsAgainst += m.team_b_score ?? 0;
+      r.gamesWon += m.games_won_a;
+      r.gamesLost += m.games_won_b;
+      if (m.winner_side === 'a') r.matchWins += 1;
+      else r.matchLosses += 1;
+    }
+    for (const bp of bPlayers) {
+      const r = ensure(bp);
+      r.matchesPlayed += 1;
+      r.pointsFor += m.team_b_score ?? 0;
+      r.pointsAgainst += m.team_a_score ?? 0;
+      r.gamesWon += m.games_won_b;
+      r.gamesLost += m.games_won_a;
+      if (m.winner_side === 'b') r.matchWins += 1;
+      else r.matchLosses += 1;
+    }
+  }
+
+  for (const row of rows.values()) {
+    row.pointDiff = row.pointsFor - row.pointsAgainst;
+    row.winPct = row.matchesPlayed === 0 ? 0 : row.matchWins / row.matchesPlayed;
+  }
+
+  return Array.from(rows.values()).sort((x, y) => {
+    if (x.matchWins !== y.matchWins) return y.matchWins - x.matchWins;
+    if (x.pointDiff !== y.pointDiff) return y.pointDiff - x.pointDiff;
+    if (x.gamesWon !== y.gamesWon) return y.gamesWon - x.gamesWon;
+    return x.team.localeCompare(y.team);
+  });
+}
+
+// Heuristic: if at least one player has appeared in two or more distinct
+// teams across completed matches, the data looks like a rotating-partners
+// tournament and player standings should be the primary view. Otherwise
+// (every player has a single fixed partner) team standings are primary.
+export function isRotatingPartnersData(matches: StandingsMatch[]): boolean {
+  const partnersOf = new Map<string, Set<string>>();
+  const split = (label: string) => label.split('&').map((s) => s.trim()).filter(Boolean);
+  for (const m of matches) {
+    if (m.winner_side === null) continue;
+    for (const team of [m.team_a_label, m.team_b_label]) {
+      const players = split(team);
+      if (players.length < 2) continue;
+      for (const player of players) {
+        if (!partnersOf.has(player)) partnersOf.set(player, new Set());
+        for (const other of players) if (other !== player) partnersOf.get(player)!.add(other);
+      }
+    }
+  }
+  for (const set of partnersOf.values()) {
+    if (set.size >= 2) return true;
+  }
+  return false;
+}

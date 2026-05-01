@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeMatchOutcome,
+  computePlayerStandings,
   computeStandings,
+  isRotatingPartnersData,
   isValidGame,
   type DivisionRules,
   type GameScore,
@@ -228,5 +230,86 @@ describe('computeStandings', () => {
     expect(a.gamesWon).toBe(2);
     expect(a.gamesLost).toBe(1);
     expect(a.pointDiff).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Player standings + isRotatingPartnersData
+// ---------------------------------------------------------------------------
+
+describe('computePlayerStandings', () => {
+  it('attributes a doubles match to each member of both teams', () => {
+    const standings = computePlayerStandings([
+      m('Alice & Bob', 11, 'Carol & Dave', 7),
+    ]);
+    const players = Object.fromEntries(standings.map((s) => [s.team, s]));
+    expect(players.Alice.matchWins).toBe(1);
+    expect(players.Bob.matchWins).toBe(1);
+    expect(players.Carol.matchLosses).toBe(1);
+    expect(players.Dave.matchLosses).toBe(1);
+    expect(players.Alice.pointDiff).toBe(4);
+    expect(players.Carol.pointDiff).toBe(-4);
+  });
+
+  it('aggregates across rotating partners (Alice plays with Bob, then with Carol)', () => {
+    const standings = computePlayerStandings([
+      m('Alice & Bob', 11, 'Carol & Dave', 6), // Alice & Bob win
+      m('Alice & Carol', 11, 'Bob & Dave', 9), // Alice wins again with new partner
+      m('Bob & Carol', 8, 'Alice & Dave', 11), // Alice wins a third time
+    ]);
+    const find = (name: string) => standings.find((s) => s.team === name)!;
+    expect(find('Alice').matchWins).toBe(3);
+    expect(find('Alice').matchLosses).toBe(0);
+    // Bob: won match 1, lost matches 2 and 3
+    expect(find('Bob').matchWins).toBe(1);
+    expect(find('Bob').matchLosses).toBe(2);
+    // Carol: lost m1, won m2, lost m3
+    expect(find('Carol').matchWins).toBe(1);
+    expect(find('Carol').matchLosses).toBe(2);
+    // Dave: lost m1, lost m2, won m3 (paired with Alice)
+    expect(find('Dave').matchWins).toBe(1);
+    expect(find('Dave').matchLosses).toBe(2);
+    // Alice should be #1 in player standings.
+    expect(standings[0].team).toBe('Alice');
+  });
+
+  it('handles singles labels (no & in team)', () => {
+    const standings = computePlayerStandings([
+      m('Alice', 11, 'Bob', 7),
+      m('Bob', 11, 'Alice', 5),
+    ]);
+    expect(standings.find((s) => s.team === 'Alice')?.matchWins).toBe(1);
+    expect(standings.find((s) => s.team === 'Bob')?.matchWins).toBe(1);
+  });
+
+  it('falls back to alphabetical order on full ties', () => {
+    const standings = computePlayerStandings([
+      m('Bravo', 11, 'Alpha', 7),
+      m('Alpha', 11, 'Bravo', 7),
+    ]);
+    expect(standings.map((s) => s.team)).toEqual(['Alpha', 'Bravo']);
+  });
+});
+
+describe('isRotatingPartnersData', () => {
+  it('returns true when at least one player has multiple distinct partners', () => {
+    expect(
+      isRotatingPartnersData([
+        m('Alice & Bob', 11, 'Carol & Dave', 6),
+        m('Alice & Carol', 11, 'Bob & Dave', 9),
+      ]),
+    ).toBe(true);
+  });
+  it('returns false when every player has exactly one partner (fixed partners)', () => {
+    expect(
+      isRotatingPartnersData([
+        m('Alice & Bob', 11, 'Carol & Dave', 6),
+        m('Alice & Bob', 11, 'Eve & Frank', 4),
+        m('Carol & Dave', 11, 'Eve & Frank', 9),
+      ]),
+    ).toBe(false);
+  });
+  it('returns false for singles-only matches', () => {
+    expect(isRotatingPartnersData([m('Alice', 11, 'Bob', 7)])).toBe(false);
   });
 });

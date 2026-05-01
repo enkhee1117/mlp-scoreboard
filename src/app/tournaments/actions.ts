@@ -144,6 +144,7 @@ export async function generateMatches(_prev: FormState, formData: FormData): Pro
   const scheme = (fieldString(formData, 'scheme') || 'rotating_partners') as MatchScheme;
   const courts = fieldInt(formData, 'courts', 2, 1, 16);
   const rounds = fieldInt(formData, 'rounds', 5, 1, 50);
+  const confirmWipe = fieldString(formData, 'confirm_wipe') === '1';
 
   if (!tournamentId) return { error: 'Missing tournament id.' };
   if (!['rotating_partners', 'fixed_partners', 'single_elimination'].includes(scheme)) {
@@ -152,6 +153,22 @@ export async function generateMatches(_prev: FormState, formData: FormData): Pro
 
   const { supabase, user } = await getAuthedClient();
   if (!user) return { error: 'Please sign in.' };
+
+  // Server-side check: how many pending matches will be wiped?
+  let pendingQuery = supabase
+    .from('matches')
+    .select('id', { head: true, count: 'exact' })
+    .eq('tournament_id', tournamentId)
+    .is('completed_at', null);
+  pendingQuery = divisionId
+    ? pendingQuery.eq('division_id', divisionId)
+    : pendingQuery.is('division_id', null);
+  const { count: pendingCount } = await pendingQuery;
+  if ((pendingCount ?? 0) > 0 && !confirmWipe) {
+    return {
+      error: `${pendingCount} pending match${pendingCount === 1 ? '' : 'es'} would be deleted. Tick the confirmation checkbox to continue.`,
+    };
+  }
 
   const { data: roster, error: rosterErr } = await supabase
     .from('tournament_players')
