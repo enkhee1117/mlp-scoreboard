@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import { signUpWithPassword } from './actions';
 
 export default async function SignupPage({
@@ -43,7 +44,7 @@ export default async function SignupPage({
           />
           <p className="mt-1 text-xs text-text-muted">At least 8 characters.</p>
         </div>
-        <button className="btn btn-primary w-full" type="submit">Create account</button>
+        <SubmitButton className="btn btn-primary w-full" pendingLabel="Creating account...">Create account</SubmitButton>
       </form>
 
       <p className="mt-4 text-xs text-text-muted">

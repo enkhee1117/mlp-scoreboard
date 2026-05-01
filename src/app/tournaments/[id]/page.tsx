@@ -1,7 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { addTournamentPlayer, generateRoundRobinMatches, updateTournamentWhatsApp } from '@/app/tournaments/actions';
+import {
+  addTournamentPlayer,
+  generateRoundRobinMatches,
+  renameTournamentPlayer,
+  updateTournamentWhatsApp,
+} from '@/app/tournaments/actions';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import type { Tournament } from '@/lib/types';
 
 type PageProps = {
@@ -95,7 +101,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
               defaultValue={t.whatsapp_group_url ?? ''}
               placeholder="https://chat.whatsapp.com/..."
             />
-            <button className="btn btn-ghost" type="submit">Save Link</button>
+            <SubmitButton className="btn btn-ghost" pendingLabel="Saving...">Save Link</SubmitButton>
           </form>
         )}
       </section>
@@ -111,7 +117,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
               <input type="hidden" name="tournament_id" value={t.id} />
               <input className="input" name="display_name" placeholder="Player name" required />
               <input className="input" name="email" type="email" placeholder="Email (optional, links history)" />
-              <button className="btn btn-primary" type="submit">Add</button>
+              <SubmitButton className="btn btn-primary" pendingLabel="Adding...">Add</SubmitButton>
             </form>
           )}
           {p.length === 0 ? (
@@ -119,22 +125,55 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
           ) : (
             <div className="space-y-2">
               {p.map((player) => (
-                <div key={player.id} className="flex items-center justify-between rounded-md border border-border-dark bg-dark-bg px-3 py-2">
-                  <div>
-                    <p className="font-medium">{player.display_name}</p>
-                    {player.email && (
-                      <p className="text-xs text-text-muted">{player.email}</p>
-                    )}
-                  </div>
-                  {player.profile_id ? (
-                    <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs text-emerald-300">
-                      linked
-                    </span>
-                  ) : player.email ? (
-                    <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-amber-300">
-                      pending signup
-                    </span>
-                  ) : null}
+                <div
+                  key={player.id}
+                  className="rounded-md border border-border-dark bg-dark-bg px-3 py-2"
+                >
+                  {canManage ? (
+                    <form
+                      action={renameTournamentPlayer}
+                      className="flex items-center gap-2"
+                    >
+                      <input type="hidden" name="tournament_id" value={t.id} />
+                      <input type="hidden" name="player_id" value={player.id} />
+                      <input
+                        className="input flex-1 !py-1"
+                        name="display_name"
+                        defaultValue={player.display_name}
+                        required
+                        minLength={2}
+                      />
+                      <SubmitButton
+                        className="btn btn-ghost !px-2 !py-1 text-xs"
+                        pendingLabel="..."
+                      >
+                        Save
+                      </SubmitButton>
+                      {player.profile_id ? (
+                        <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs text-emerald-300">
+                          linked
+                        </span>
+                      ) : player.email ? (
+                        <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-amber-300">
+                          pending
+                        </span>
+                      ) : null}
+                    </form>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{player.display_name}</p>
+                        {player.email && (
+                          <p className="text-xs text-text-muted">{player.email}</p>
+                        )}
+                      </div>
+                      {player.profile_id && (
+                        <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs text-emerald-300">
+                          linked
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -147,7 +186,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
             {canManage && (
               <form action={generateRoundRobinMatches}>
                 <input type="hidden" name="tournament_id" value={t.id} />
-                <button className="btn btn-ghost" type="submit">Generate Round Robin</button>
+                <SubmitButton className="btn btn-ghost" pendingLabel="Generating...">Generate Round Robin</SubmitButton>
               </form>
             )}
           </div>

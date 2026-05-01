@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import { setNewPassword } from './actions';
 
 export default async function ResetPasswordPage({
@@ -55,7 +56,7 @@ export default async function ResetPasswordPage({
             autoComplete="new-password"
           />
         </div>
-        <button className="btn btn-primary w-full" type="submit">Update password</button>
+        <SubmitButton className="btn btn-primary w-full" pendingLabel="Updating...">Update password</SubmitButton>
       </form>
     </div>
   );

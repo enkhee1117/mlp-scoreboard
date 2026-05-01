@@ -1,6 +1,7 @@
 import { getProfile } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createInvite, deleteInvite, setRole } from './actions';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import type { AppRole, Invite, Profile } from '@/lib/types';
 
 export default async function AdminPage({
@@ -61,7 +62,7 @@ export default async function AdminPage({
               {isAdmin && <option value="admin">admin</option>}
             </select>
           </div>
-          <button className="btn btn-primary" type="submit">Create invite</button>
+          <SubmitButton className="btn btn-primary" pendingLabel="Creating...">Create invite</SubmitButton>
         </form>
 
         <div className="mt-5 overflow-x-auto">
@@ -100,7 +101,7 @@ export default async function AdminPage({
                       {isAdmin && (
                         <form action={deleteInvite}>
                           <input type="hidden" name="id" value={inv.id} />
-                          <button className="text-xs text-red-400 hover:underline" type="submit">delete</button>
+                          <SubmitButton className="text-xs text-red-400 hover:underline" pendingLabel="...">delete</SubmitButton>
                         </form>
                       )}
                     </td>
@@ -135,7 +136,7 @@ export default async function AdminPage({
                           <option value="organizer">organizer</option>
                           <option value="admin">admin</option>
                         </select>
-                        <button className="btn btn-ghost !py-1 !px-2 text-xs" type="submit">save</button>
+                        <SubmitButton className="btn btn-ghost !py-1 !px-2 text-xs" pendingLabel="...">save</SubmitButton>
                       </form>
                     </td>
                     <td className="text-text-muted">

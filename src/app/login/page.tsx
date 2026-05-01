@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import { signInWithPassword } from './actions';
 
 export default async function LoginPage({
@@ -35,7 +36,7 @@ export default async function LoginPage({
           <label className="label" htmlFor="password">Password</label>
           <input className="input" id="password" name="password" type="password" required autoComplete="current-password" />
         </div>
-        <button className="btn btn-primary w-full" type="submit">Sign in</button>
+        <SubmitButton className="btn btn-primary w-full" pendingLabel="Signing in...">Sign in</SubmitButton>
       </form>
 
       <div className="mt-3 text-right">

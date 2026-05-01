@@ -16,6 +16,10 @@ export async function createTournament(formData: FormData) {
   const format = String(formData.get('format') ?? 'round_robin').trim() || 'round_robin';
   const whatsappRaw = String(formData.get('whatsapp_group_url') ?? '');
   const whatsapp_group_url = normalizeWhatsAppUrl(whatsappRaw);
+  const playerCountRaw = Number(formData.get('player_count') ?? 0);
+  const playerCount = Number.isFinite(playerCountRaw)
+    ? Math.max(0, Math.min(64, Math.trunc(playerCountRaw)))
+    : 0;
 
   if (name.length < 3) {
     redirect('/tournaments?error=Tournament%20name%20must%20be%20at%20least%203%20characters');
@@ -24,19 +28,34 @@ export async function createTournament(formData: FormData) {
     redirect('/tournaments?error=WhatsApp%20link%20must%20be%20a%20valid%20chat.whatsapp.com%20URL');
   }
 
-  const { error } = await supabase.from('tournaments').insert({
-    owner_user_id: user.id,
-    name,
-    format,
-    whatsapp_group_url,
-  });
+  const { data: created, error } = await supabase
+    .from('tournaments')
+    .insert({
+      owner_user_id: user.id,
+      name,
+      format,
+      whatsapp_group_url,
+    })
+    .select('id')
+    .single();
 
-  if (error) {
-    redirect(`/tournaments?error=${encodeURIComponent(error.message)}`);
+  if (error || !created) {
+    redirect(`/tournaments?error=${encodeURIComponent(error?.message ?? 'Failed to create tournament')}`);
+  }
+
+  if (playerCount > 0) {
+    const placeholders = Array.from({ length: playerCount }, (_, i) => ({
+      tournament_id: created.id,
+      display_name: `Player ${i + 1}`,
+    }));
+    const { error: playerError } = await supabase.from('tournament_players').insert(placeholders);
+    if (playerError) {
+      redirect(`/tournaments/${created.id}?error=${encodeURIComponent('Tournament created, but adding placeholder players failed: ' + playerError.message)}`);
+    }
   }
 
   revalidatePath('/tournaments');
-  redirect('/tournaments?ok=Tournament%20created');
+  redirect(`/tournaments/${created.id}?ok=Tournament%20created`);
 }
 
 export async function updateTournamentWhatsApp(formData: FormData) {
@@ -61,6 +80,30 @@ export async function updateTournamentWhatsApp(formData: FormData) {
   revalidatePath(`/tournaments/${tournamentId}`);
   revalidatePath('/tournaments');
   redirect(`/tournaments/${tournamentId}?ok=WhatsApp%20link%20saved`);
+}
+
+export async function renameTournamentPlayer(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/tournaments?error=Please%20sign%20in');
+
+  const tournamentId = String(formData.get('tournament_id') ?? '');
+  const playerId = String(formData.get('player_id') ?? '');
+  const displayName = String(formData.get('display_name') ?? '').trim();
+  if (!tournamentId || !playerId) redirect('/tournaments');
+  if (displayName.length < 2) {
+    redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent('Player name must be at least 2 characters')}`);
+  }
+
+  const { error } = await supabase
+    .from('tournament_players')
+    .update({ display_name: displayName })
+    .eq('id', playerId)
+    .eq('tournament_id', tournamentId);
+  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  redirect(`/tournaments/${tournamentId}?ok=Player%20updated`);
 }
 
 export async function addTournamentPlayer(formData: FormData) {

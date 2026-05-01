@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import { sendPasswordReset } from './actions';
 
 export default async function ForgotPasswordPage({
@@ -31,7 +32,7 @@ export default async function ForgotPasswordPage({
           <label className="label" htmlFor="email">Email</label>
           <input className="input" id="email" name="email" type="email" required autoFocus autoComplete="email" />
         </div>
-        <button className="btn btn-primary w-full" type="submit">Send reset link</button>
+        <SubmitButton className="btn btn-primary w-full" pendingLabel="Sending...">Send reset link</SubmitButton>
       </form>
 
       <p className="mt-4 text-xs text-text-muted">

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { createTournament } from './actions';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 import type { Tournament } from '@/lib/types';
 
 type TournamentMemberRow = {
@@ -67,6 +68,20 @@ export default async function TournamentsPage({
                 <option value="bracket">bracket</option>
               </select>
             </div>
+            <div>
+              <label className="label">Number of players</label>
+              <input
+                className="input"
+                name="player_count"
+                type="number"
+                min={0}
+                max={64}
+                defaultValue={8}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Pre-fills Player 1, Player 2, ... Edit names later from the tournament page.
+              </p>
+            </div>
             <div className="md:col-span-2">
               <label className="label">WhatsApp Group URL (optional)</label>
               <input
@@ -75,8 +90,10 @@ export default async function TournamentsPage({
                 placeholder="https://chat.whatsapp.com/..."
               />
             </div>
-            <div className="flex items-end">
-              <button className="btn btn-primary w-full" type="submit">Create</button>
+            <div className="flex items-end md:col-span-3">
+              <SubmitButton className="btn btn-primary w-full" pendingLabel="Creating...">
+                Create
+              </SubmitButton>
             </div>
           </form>
         )}

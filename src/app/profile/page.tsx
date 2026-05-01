@@ -1,6 +1,7 @@
 import { getProfile } from '@/lib/auth';
 import { saveProfile } from './actions';
 import { AvatarUpload } from '@/components/AvatarUpload';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 
 export default async function ProfilePage({
   searchParams,
@@ -88,7 +89,7 @@ export default async function ProfilePage({
             Tip: paste your DUPR ID — your public DUPR profile lives at
             <span className="font-mono"> dashboard.dupr.com/dashboard/player/&lt;id&gt;</span>.
           </p>
-          <button className="btn btn-primary" type="submit">Save</button>
+          <SubmitButton className="btn btn-primary" pendingLabel="Saving...">Save</SubmitButton>
         </div>
       </form>
     </div>

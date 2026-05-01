@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Profile } from '@/lib/types';
+import { SubmitButton } from '@/components/ui/SubmitButton';
 
 const LINKS = [
   { href: '/', label: 'Home' },
@@ -28,9 +29,12 @@ export function Nav({ profile }: { profile: Profile | null }) {
             <>
               <span className="hidden text-text-muted md:inline">{profile.display_name}</span>
               <form action="/auth/signout" method="post">
-                <button className="btn btn-ghost px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm" type="submit">
+                <SubmitButton
+                  className="btn btn-ghost px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm"
+                  pendingLabel="Signing out..."
+                >
                   Sign out
-                </button>
+                </SubmitButton>
               </form>
             </>
           ) : (
