@@ -13,6 +13,7 @@ import {
   validateTournamentName,
   validateWhatsAppUrl,
 } from '@/lib/validation';
+import { generateMatchDrafts, type MatchScheme } from '@/lib/match-schemes';
 
 async function getAuthedClient() {
   const supabase = await createClient();
@@ -136,22 +137,52 @@ export async function removeTournamentPlayer(_prev: FormState, formData: FormDat
   return { ok: 'Player removed.' };
 }
 
-export async function generateRoundRobinMatches(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function generateMatches(_prev: FormState, formData: FormData): Promise<FormState> {
   const tournamentId = fieldString(formData, 'tournament_id');
-  const courtCount = fieldInt(formData, 'court_count', 4, 1, 16);
+  const scheme = (fieldString(formData, 'scheme') || 'rotating_partners') as MatchScheme;
+  const courts = fieldInt(formData, 'courts', 2, 1, 16);
+  const rounds = fieldInt(formData, 'rounds', 5, 1, 50);
+
   if (!tournamentId) return { error: 'Missing tournament id.' };
+  if (!['rotating_partners', 'fixed_partners', 'single_elimination'].includes(scheme)) {
+    return { error: 'Pick a valid generation scheme.' };
+  }
 
   const { supabase, user } = await getAuthedClient();
   if (!user) return { error: 'Please sign in.' };
 
-  const { data: count, error } = await supabase.rpc('app_generate_round_robin_matches', {
+  const { data: roster, error: rosterErr } = await supabase
+    .from('tournament_players')
+    .select('display_name')
+    .eq('tournament_id', tournamentId)
+    .order('created_at', { ascending: true });
+  if (rosterErr) return { error: formatPgError(rosterErr) };
+
+  const players = (roster ?? []).map((r) => r.display_name as string).filter(Boolean);
+  if (players.length < 4) return { error: 'Add at least 4 players to generate doubles matches.' };
+  if (scheme !== 'rotating_partners' && players.length % 2 !== 0) {
+    return { error: 'This scheme needs an even number of players (each team is two).' };
+  }
+
+  const drafts =
+    scheme === 'rotating_partners'
+      ? generateMatchDrafts({ scheme, players, rounds, courts })
+      : scheme === 'fixed_partners'
+        ? generateMatchDrafts({ scheme, players, courts })
+        : generateMatchDrafts({ scheme, players, courts });
+
+  if (drafts.length === 0) return { error: 'No matches were produced for that scheme.' };
+
+  const { data: count, error } = await supabase.rpc('app_replace_pending_matches', {
     p_tournament_id: tournamentId,
-    p_court_count: courtCount,
+    p_matches: drafts,
   });
   if (error) return { error: formatPgError(error) };
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  return { ok: `Generated ${count ?? 0} matches.` };
+  revalidatePath('/scoreboard');
+  revalidatePath(`/scoreboard/${tournamentId}`);
+  return { ok: `Generated ${count ?? drafts.length} matches.` };
 }
 
 export async function scoreMatch(_prev: FormState, formData: FormData): Promise<FormState> {

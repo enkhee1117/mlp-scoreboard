@@ -67,7 +67,7 @@ export default async function HomePage() {
               const status: 'live' | 'final' | 'upcoming' =
                 m.completed_at ? 'final' : m.team_a_score !== null || m.team_b_score !== null ? 'live' : 'upcoming';
               return (
-                <Link key={m.id} href={`/tournaments/${m.tournament_id}`} className="block">
+                <Link key={m.id} href={`/scoreboard/${m.tournament_id}`} className="block">
                   <MatchCard
                     court={m.court_label ?? 'Court'}
                     division={m.round_label ?? 'Round'}

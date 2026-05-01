@@ -160,7 +160,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
             <h2 className="font-display text-xl font-semibold">Matches</h2>
             <span className="text-xs text-text-muted">{m.length} total</span>
           </div>
-          {canManage && <GenerateMatchesForm tournamentId={t.id} />}
+          {canManage && <GenerateMatchesForm tournamentId={t.id} playerCount={p.length} />}
 
           <h3 className="mt-4 text-sm font-semibold uppercase tracking-wider text-text-muted">In progress</h3>
           {pending.length === 0 ? (
