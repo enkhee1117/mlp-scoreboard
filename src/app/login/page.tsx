@@ -38,6 +38,12 @@ export default async function LoginPage({
         <button className="btn btn-primary w-full" type="submit">Sign in</button>
       </form>
 
+      <div className="mt-3 text-right">
+        <Link href="/forgot-password" className="text-xs font-semibold text-text-muted hover:text-volt">
+          Forgot password?
+        </Link>
+      </div>
+
       <p className="mt-4 text-xs text-text-muted">
         New to TourneyPal?{' '}
         <Link href={`/signup${sp.next ? `?next=${encodeURIComponent(sp.next)}` : ''}`} className="font-semibold text-volt hover:text-volt-hover">
