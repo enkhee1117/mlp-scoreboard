@@ -39,28 +39,24 @@ export async function createTournament(formData: FormData) {
   redirect('/tournaments?ok=Tournament%20created');
 }
 
-export async function updateTournamentWhatsApp(formData: FormData) {
+export async function updateTournamentWhatsApp(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/tournaments?error=Please%20sign%20in');
+  if (!user) return;
 
   const tournamentId = String(formData.get('tournament_id') ?? '');
   const raw = String(formData.get('whatsapp_group_url') ?? '');
   const whatsapp_group_url = normalizeWhatsAppUrl(raw);
-  if (!tournamentId) redirect('/tournaments?error=Missing%20tournament%20id');
-  if (raw.trim() && !whatsapp_group_url) {
-    redirect(`/tournaments/${tournamentId}?error=Invalid%20WhatsApp%20group%20URL`);
-  }
+  if (!tournamentId) return;
 
-  const { error } = await supabase
+  await supabase
     .from('tournaments')
-    .update({ whatsapp_group_url })
+    .update({ whatsapp_group_url: whatsapp_group_url ?? null })
     .eq('id', tournamentId);
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${tournamentId}/invite`);
   revalidatePath('/tournaments');
-  redirect(`/tournaments/${tournamentId}?ok=WhatsApp%20link%20saved`);
 }
 
 export async function addTournamentPlayer(formData: FormData) {
@@ -71,17 +67,18 @@ export async function addTournamentPlayer(formData: FormData) {
   const tournamentId = String(formData.get('tournament_id') ?? '');
   const displayName = String(formData.get('display_name') ?? '').trim();
   if (!tournamentId || displayName.length < 2) {
-    redirect(`/tournaments/${tournamentId}?error=Player%20name%20must%20be%20at%20least%202%20characters`);
+    redirect(`/tournaments/${tournamentId}/invite?error=Player%20name%20must%20be%20at%20least%202%20characters`);
   }
 
   const { error } = await supabase.from('tournament_players').insert({
     tournament_id: tournamentId,
     display_name: displayName,
   });
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/tournaments/${tournamentId}/invite?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  redirect(`/tournaments/${tournamentId}?ok=Player%20added`);
+  revalidatePath(`/tournaments/${tournamentId}/invite`);
+  redirect(`/tournaments/${tournamentId}/invite?ok=Player%20added`);
 }
 
 export async function generateRoundRobinMatches(formData: FormData) {
@@ -97,9 +94,9 @@ export async function generateRoundRobinMatches(formData: FormData) {
     .select('display_name')
     .eq('tournament_id', tournamentId)
     .order('created_at', { ascending: true });
-  if (playersError) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(playersError.message)}`);
+  if (playersError) redirect(`/tournaments/${tournamentId}/invite?error=${encodeURIComponent(playersError.message)}`);
   if (!players || players.length < 2) {
-    redirect(`/tournaments/${tournamentId}?error=Add%20at%20least%202%20players%20before%20generating%20matches`);
+    redirect(`/tournaments/${tournamentId}/invite?error=Add%20at%20least%202%20players%20before%20generating%20matches`);
   }
 
   const drafts = generateRoundRobinDrafts(players.map((p) => p.display_name));
@@ -114,8 +111,9 @@ export async function generateRoundRobinMatches(formData: FormData) {
       created_by_user_id: user.id,
     })),
   );
-  if (error) redirect(`/tournaments/${tournamentId}?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/tournaments/${tournamentId}/invite?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${tournamentId}/invite`);
   redirect(`/tournaments/${tournamentId}?ok=Matches%20generated`);
 }

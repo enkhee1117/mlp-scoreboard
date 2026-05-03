@@ -1,21 +1,33 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { createTournament } from './actions';
 import type { Tournament } from '@/lib/types';
+import { TopBar } from '@/components/ui/TopBar';
+import { Chip } from '@/components/ui/Chip';
+import { Icons } from '@/components/ui/icons';
 
 type TournamentMemberRow = {
   role: string;
   tournaments: Tournament | null;
 };
 
+const FILTERS: Array<{ id: string; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'live', label: 'Live' },
+  { id: 'drafts', label: 'Drafts' },
+  { id: 'past', label: 'Past' },
+];
+
 export default async function TournamentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<{ filter?: string; ok?: string; error?: string }>;
 }) {
   const sp = await searchParams;
+  const filter = sp.filter ?? 'all';
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   let rows: TournamentMemberRow[] = [];
   if (user) {
@@ -27,107 +39,171 @@ export default async function TournamentsPage({
     rows = (data as TournamentMemberRow[] | null) ?? [];
   }
 
+  const tournaments = rows
+    .map((r) => r.tournaments)
+    .filter((t): t is Tournament => !!t)
+    .filter((t) => {
+      if (filter === 'live') return t.status === 'active';
+      if (filter === 'drafts') return t.status === 'draft';
+      if (filter === 'past') return t.status === 'completed' || t.status === 'archived';
+      return true;
+    });
+
   return (
-    <div className="space-y-6">
-      <section className="card p-6">
-        <h1 className="font-display text-3xl font-bold">My Tournaments</h1>
-        <p className="mt-2 text-sm text-text-muted">
-          Create and manage your own tournaments. Players and matches are scoped per tournament.
-        </p>
-      </section>
-
-      {sp.error && (
-        <div className="rounded border border-error/40 bg-error/10 px-3 py-2 text-sm text-red-300">
-          {sp.error}
-        </div>
-      )}
-      {sp.ok && (
-        <div className="rounded border border-success/40 bg-success/10 px-3 py-2 text-sm text-emerald-300">
-          {sp.ok}
-        </div>
-      )}
-
-      <section className="card">
-        <h2 className="font-display text-xl font-semibold">Create Tournament</h2>
-        {!user ? (
-          <p className="mt-2 text-sm text-text-muted">
-            Sign in to create tournaments. Public mode browsing is still enabled for other features.
-          </p>
-        ) : (
-          <form action={createTournament} className="mt-4 grid gap-4 md:grid-cols-3">
-            <div className="md:col-span-2">
-              <label className="label">Tournament Name</label>
-              <input className="input" name="name" placeholder="e.g. Spring Open 2026" required />
-            </div>
-            <div>
-              <label className="label">Format</label>
-              <select className="input" name="format" defaultValue="round_robin">
-                <option value="round_robin">round_robin</option>
-                <option value="fixed_partners">fixed_partners</option>
-                <option value="bracket">bracket</option>
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">WhatsApp Group URL (optional)</label>
-              <input
-                className="input"
-                name="whatsapp_group_url"
-                placeholder="https://chat.whatsapp.com/..."
-              />
-            </div>
-            <div className="flex items-end">
-              <button className="btn btn-primary w-full" type="submit">Create</button>
-            </div>
-          </form>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl font-semibold">Your Tournament List</h2>
-          <Link href="/history" className="text-sm font-semibold text-volt hover:text-volt-hover">
-            Open History
+    <div className="flex min-h-full flex-col bg-paper">
+      <TopBar
+        title="Your tournaments"
+        right={
+          <Link
+            href="/tournaments/new"
+            aria-label="New tournament"
+            className="flex h-10 w-10 items-center justify-center rounded-xl"
+            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+          >
+            {Icons.plus}
           </Link>
+        }
+      />
+
+      <div className="px-[18px] pb-24 pt-1">
+        <div className="mb-3.5 flex gap-2 overflow-x-auto">
+          {FILTERS.map((f) => (
+            <Link
+              key={f.id}
+              href={f.id === 'all' ? '/tournaments' : `/tournaments?filter=${f.id}`}
+              className="shrink-0"
+            >
+              <Chip tone={filter === f.id ? 'dark' : 'ghost'} size="md">
+                {f.label}
+              </Chip>
+            </Link>
+          ))}
         </div>
-        {rows.length === 0 ? (
-          <p className="text-sm text-text-muted">No tournaments yet.</p>
-        ) : (
-          <div className="grid gap-3">
-            {rows.map((r) => {
-              const t = r.tournaments;
-              if (!t) return null;
-              return (
-                <div key={`${t.id}-${r.role}`} className="rounded-lg border border-border-dark bg-dark-bg px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-display text-lg font-semibold">
-                        <Link href={`/tournaments/${t.id}`} className="hover:text-volt">
-                          {t.name}
-                        </Link>
-                      </h3>
-                      <p className="text-xs text-text-muted">
-                        format: {t.format} - status: {t.status} - role: {r.role}
-                      </p>
-                    </div>
-                    {t.whatsapp_group_url ? (
-                      <a
-                        href={t.whatsapp_group_url}
-                        className="btn btn-ghost"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        WhatsApp Group
-                      </a>
-                    ) : (
-                      <span className="text-xs text-text-muted">No WhatsApp link</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+
+        {sp.error && (
+          <div
+            className="mb-3 rounded-xl border px-3 py-2 text-sm"
+            style={{ borderColor: 'var(--berry)', color: 'var(--berry)', background: 'oklch(0.96 0.04 12)' }}
+          >
+            {sp.error}
           </div>
         )}
-      </section>
+        {sp.ok && (
+          <div
+            className="mb-3 rounded-xl border px-3 py-2 text-sm"
+            style={{ borderColor: 'var(--court-deep)', color: 'var(--court-deep)', background: 'oklch(0.96 0.04 140)' }}
+          >
+            {sp.ok}
+          </div>
+        )}
+
+        {!user && (
+          <div
+            className="mb-3 rounded-2xl bg-white p-4 text-sm text-ink-2"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            Sign in to see your tournaments. You can still browse anything public below.
+          </div>
+        )}
+
+        {tournaments.length === 0 ? (
+          <div
+            className="rounded-2xl bg-white p-6 text-center"
+            style={{ border: '1px dashed var(--line)' }}
+          >
+            <div className="text-[15px] font-semibold text-ink">No tournaments here yet</div>
+            <div className="mt-1 text-xs text-ink-3">
+              Spin up your first round robin in 90 seconds.
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {tournaments.map((t) => (
+              <TournamentRow key={t.id} t={t} />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5">
+          <Link
+            href="/tournaments/new"
+            className="block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight"
+            style={{
+              background: 'var(--court)',
+              color: 'oklch(0.2 0.04 140)',
+              boxShadow: '0 4px 14px oklch(0.2 0.05 100 / 0.12)',
+            }}
+          >
+            ＋ Create new tournament
+          </Link>
+        </div>
+      </div>
     </div>
   );
+}
+
+function TournamentRow({ t }: { t: Tournament }) {
+  const live = t.status === 'active';
+  const formatLabel = formatDisplay(t.format);
+  const date = new Date(t.created_at).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+  return (
+    <Link
+      href={`/tournaments/${t.id}`}
+      className="relative flex items-center gap-3 overflow-hidden rounded-[18px] bg-white p-4"
+      style={{ border: '1px solid var(--line)' }}
+    >
+      <div
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px]"
+        style={{ background: live ? 'var(--court)' : 'var(--paper-2)' }}
+      >
+        {live ? (
+          <span
+            className="block h-2.5 w-2.5 animate-pulse-dot rounded-full"
+            style={{ background: 'var(--ink)' }}
+          />
+        ) : (
+          <span style={{ color: 'var(--ink-3)' }}>{Icons.trophy}</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="mb-0.5 flex items-center gap-1.5">
+          {live && <Chip tone="live">LIVE</Chip>}
+          <div className="text-[11px] uppercase tracking-[0.04em] text-ink-3">{date}</div>
+        </div>
+        <div className="text-base font-semibold tracking-tight text-ink">{t.name}</div>
+        <div className="mt-0.5 text-xs text-ink-3">
+          {formatLabel} · {capitalize(t.status)}
+        </div>
+      </div>
+      <span style={{ color: 'var(--ink-3)' }}>{Icons.arrow}</span>
+    </Link>
+  );
+}
+
+function formatDisplay(format: string): string {
+  switch (format) {
+    case 'round_robin':
+      return 'Round Robin';
+    case 'fixed_partners':
+      return 'Fixed Partners';
+    case 'bracket':
+      return 'Bracket';
+    case 'rr-mixed':
+      return 'Round Robin · Mixed';
+    case 'rr-same':
+      return 'Round Robin · Same gender';
+    case 'fp-mixed':
+      return 'Fixed Partners · Mixed';
+    case 'fp-same':
+      return 'Fixed Partners · Same gender';
+    default:
+      return format;
+  }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
