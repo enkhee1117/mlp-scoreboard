@@ -13,6 +13,7 @@ import {
   SEMI_LOSER_PLACEHOLDERS,
   SEMI_WINNER_PLACEHOLDERS,
 } from '@/lib/playoffs';
+import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 import { GeneratePlayoffsForm } from './GeneratePlayoffsForm';
 
 type PageProps = {
@@ -36,6 +37,11 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const sp = await searchParams;
   const tab = sp.tab ?? 'matches';
   const supabase = await createClient();
+
+  // Self-heal lifecycle status for tournaments that pre-date the auto-update
+  // logic — a single cheap pass on each detail-page load promotes them from
+  // draft to active or completed based on the current match data.
+  await refreshTournamentStatus(supabase, id);
 
   const [{ data: tournament }, { data: matches }, { data: players }] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),

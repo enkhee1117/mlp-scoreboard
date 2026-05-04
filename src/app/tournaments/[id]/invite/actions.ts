@@ -13,8 +13,15 @@ import { normalizeWhatsAppUrl } from '@/lib/validation';
 export async function addInvitePlayer(formData: FormData): Promise<void> {
   const tournamentId = String(formData.get('tournament_id') ?? '').trim();
   const displayName = String(formData.get('display_name') ?? '').trim();
+  const emailRaw = String(formData.get('email') ?? '').trim();
   if (!tournamentId || displayName.length < 2) {
     redirect(`/tournaments/${tournamentId}/invite?error=Player%20name%20must%20be%20at%20least%202%20characters`);
+  }
+  // Lightweight email check — match the same regex the validation lib uses.
+  if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+    redirect(
+      `/tournaments/${tournamentId}/invite?error=${encodeURIComponent('Email looks invalid.')}`,
+    );
   }
 
   const supabase = await createClient();
@@ -26,7 +33,7 @@ export async function addInvitePlayer(formData: FormData): Promise<void> {
   const { error } = await supabase.rpc('app_add_tournament_player', {
     p_tournament_id: tournamentId,
     p_display_name: displayName,
-    p_email: null,
+    p_email: emailRaw || null,
   });
   if (error) {
     redirect(`/tournaments/${tournamentId}/invite?error=${encodeURIComponent(formatPgError(error))}`);

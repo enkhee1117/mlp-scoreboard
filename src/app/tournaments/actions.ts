@@ -20,6 +20,7 @@ import {
   seedTwoPoolPlayoffs,
 } from '@/lib/playoffs';
 import { propagateSemiOutcome } from '@/lib/playoffs-server';
+import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 import type { StandingsMatch } from '@/lib/scoring';
 
 async function getAuthedClient() {
@@ -216,7 +217,9 @@ export async function generateMatches(_prev: FormState, formData: FormData): Pro
   });
   if (error) return { error: formatPgError(error) };
 
+  await refreshTournamentStatus(supabase, tournamentId);
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
   return { ok: `Generated ${count ?? drafts.length} matches.` };
 }
 
@@ -256,8 +259,10 @@ export async function scoreMatch(_prev: FormState, formData: FormData): Promise<
   // If this was a semifinal, splice the winner/loser into the matching slots
   // of the Final and 3rd-place matches so the bracket UI updates.
   await propagateSemiOutcome(supabase, tournamentId, matchId);
+  await refreshTournamentStatus(supabase, tournamentId);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
   revalidatePath('/');
   revalidatePath('/history');
   return { ok: 'Score saved.' };
@@ -374,7 +379,10 @@ export async function generatePlayoffs(_prev: FormState, formData: FormData): Pr
   });
   if (error) return { error: formatPgError(error) };
 
+  await refreshTournamentStatus(supabase, tournamentId);
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
+  revalidatePath('/history');
   return { ok: 'Playoff bracket created.' };
 }
 

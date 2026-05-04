@@ -17,6 +17,7 @@ type Props = {
   teamBLabel: string;
   initialScoreA: number;
   initialScoreB: number;
+  returnTab?: 'matches' | 'bracket';
 };
 
 const KEYPAD: Array<string> = ['1', '2', '3', '+1', '4', '5', '6', '−1', '7', '8', '9', '⌫', 'C', '0', '', '▶'];
@@ -30,8 +31,10 @@ export function MatchScreen({
   teamBLabel,
   initialScoreA,
   initialScoreB,
+  returnTab = 'matches',
 }: Props) {
   const router = useRouter();
+  const returnHref = `/tournaments/${tournamentId}?tab=${returnTab}`;
   const [scoreA, setScoreA] = useState(initialScoreA);
   const [scoreB, setScoreB] = useState(initialScoreB);
   const [active, setActive] = useState<'A' | 'B'>('A');
@@ -72,7 +75,7 @@ export function MatchScreen({
   return (
     <div className="flex min-h-full flex-col bg-paper">
       <div className="flex items-center justify-between px-[18px] pt-2 pb-2.5">
-        <IconBtn aria-label="Back" onClick={() => router.push(`/tournaments/${tournamentId}`)}>
+        <IconBtn aria-label="Back" onClick={() => router.push(returnHref)}>
           {Icons.back}
         </IconBtn>
         <div className="text-center">
@@ -195,7 +198,7 @@ export function MatchScreen({
               </div>
             </div>
           </div>
-          <BigButton tone="ink" onClick={() => router.push(`/tournaments/${tournamentId}`)}>
+          <BigButton tone="ink" onClick={() => router.push(returnHref)}>
             Back to scoreboard
           </BigButton>
         </div>

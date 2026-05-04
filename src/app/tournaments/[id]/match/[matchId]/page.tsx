@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { ALL_PLAYOFF_LABELS } from '@/lib/playoffs';
 import { MatchScreen } from './MatchScreen';
 
 type PageProps = {
@@ -29,6 +30,9 @@ export default async function MatchPage({ params }: PageProps) {
   if (!data) notFound();
   const row = data as MatchRow;
 
+  const isPlayoff = (ALL_PLAYOFF_LABELS as readonly string[]).includes(row.round_label ?? '');
+  const returnTab: 'matches' | 'bracket' = isPlayoff ? 'bracket' : 'matches';
+
   return (
     <MatchScreen
       tournamentId={id}
@@ -39,6 +43,7 @@ export default async function MatchPage({ params }: PageProps) {
       teamBLabel={row.team_b_label}
       initialScoreA={row.team_a_score ?? 0}
       initialScoreB={row.team_b_score ?? 0}
+      returnTab={returnTab}
     />
   );
 }

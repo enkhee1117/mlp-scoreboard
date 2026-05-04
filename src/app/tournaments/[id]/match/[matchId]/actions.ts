@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { formatPgError } from '@/lib/forms';
 import { propagateSemiOutcome } from '@/lib/playoffs-server';
+import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 
 export async function saveMatchScore({
   matchId,
@@ -40,7 +41,11 @@ export async function saveMatchScore({
   // If this was a semifinal, splice the winner/loser into the Final and
   // 3rd-place rows so the bracket UI keeps moving forward.
   await propagateSemiOutcome(supabase, tournamentId, matchId);
+  await refreshTournamentStatus(supabase, tournamentId);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
+  revalidatePath('/');
+  revalidatePath('/history');
   return { ok: true };
 }
