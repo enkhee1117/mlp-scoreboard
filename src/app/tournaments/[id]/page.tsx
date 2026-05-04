@@ -7,6 +7,13 @@ import { Chip } from '@/components/ui/Chip';
 import { Avatar, playerFromName } from '@/components/ui/Avatar';
 import { Icons } from '@/components/ui/icons';
 import { SAMPLE_PLAYERS } from '@/lib/sample-data';
+import {
+  ALL_PLAYOFF_LABELS,
+  PLAYOFF_ROUND_LABELS,
+  SEMI_LOSER_PLACEHOLDERS,
+  SEMI_WINNER_PLACEHOLDERS,
+} from '@/lib/playoffs';
+import { GeneratePlayoffsForm } from './GeneratePlayoffsForm';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -50,6 +57,17 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const m = (matches ?? []) as MatchRow[];
 
   const liveCount = m.filter((row) => !row.completed_at && (row.team_a_score || row.team_b_score)).length;
+
+  const playoffMatches = m.filter((row) =>
+    (ALL_PLAYOFF_LABELS as readonly string[]).includes(row.round_label ?? ''),
+  );
+  const rrMatches = m.filter(
+    (row) => !(ALL_PLAYOFF_LABELS as readonly string[]).includes(row.round_label ?? ''),
+  );
+  const playoffsExist = playoffMatches.length > 0;
+  const rrPending = rrMatches.filter((row) => !row.completed_at).length;
+  const canGeneratePlayoffs =
+    !playoffsExist && rrMatches.length > 0 && rrPending === 0;
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -143,9 +161,17 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
           </div>
         )}
 
-        {tab === 'matches' && <MatchesTab tournamentId={id} matches={m} />}
+        {tab === 'matches' && <MatchesTab tournamentId={id} matches={rrMatches} />}
         {tab === 'standings' && <StandingsTab />}
-        {tab === 'bracket' && <BracketTab />}
+        {tab === 'bracket' && (
+          <BracketTab
+            tournamentId={id}
+            playoffMatches={playoffMatches}
+            canGenerate={canGeneratePlayoffs}
+            rrPending={rrPending}
+            hasRoundRobin={rrMatches.length > 0}
+          />
+        )}
       </div>
     </div>
   );
@@ -377,74 +403,270 @@ function StandingsTab() {
   );
 }
 
-function BracketTab() {
+function BracketTab({
+  tournamentId,
+  playoffMatches,
+  canGenerate,
+  rrPending,
+  hasRoundRobin,
+}: {
+  tournamentId: string;
+  playoffMatches: MatchRow[];
+  canGenerate: boolean;
+  rrPending: number;
+  hasRoundRobin: boolean;
+}) {
+  // Empty state — round robin still in progress, or no schedule yet.
+  if (playoffMatches.length === 0) {
+    return (
+      <div className="py-[18px] pb-24">
+        <div className="px-[18px] pb-3.5">
+          <div className="serif text-[22px] text-ink">Playoffs</div>
+          <div className="mt-0.5 text-xs text-ink-3">
+            Top 4 seeds advance after round robin.
+          </div>
+        </div>
+
+        <div className="px-[18px]">
+          {!hasRoundRobin ? (
+            <div
+              className="rounded-2xl bg-white p-5 text-center text-sm text-ink-3"
+              style={{ border: '1px dashed var(--line)' }}
+            >
+              Generate your round-robin matches first — the bracket gets seeded
+              from the standings once everyone has played.
+            </div>
+          ) : !canGenerate ? (
+            <div
+              className="rounded-2xl bg-white p-5 text-center"
+              style={{ border: '1px dashed var(--line)' }}
+            >
+              <div className="text-[15px] font-semibold text-ink">
+                Round robin in progress
+              </div>
+              <div className="mt-1 text-xs text-ink-3">
+                {rrPending} match{rrPending === 1 ? '' : 'es'} still pending. Once
+                they&rsquo;re all scored, you can seed the bracket.
+              </div>
+            </div>
+          ) : (
+            <GeneratePlayoffsForm tournamentId={tournamentId} />
+          )}
+
+          {/* Sample preview (faded) so the layout is visible on cold pools. */}
+          <div className="mt-6 opacity-40">
+            <BracketRound
+              title="Preview"
+              matches={[
+                {
+                  seed1: '1',
+                  p1: SAMPLE_PLAYERS[0],
+                  team1Label: SAMPLE_PLAYERS[0].name,
+                  seed2: '4',
+                  p2: SAMPLE_PLAYERS[3],
+                  team2Label: SAMPLE_PLAYERS[3].name,
+                },
+                {
+                  seed1: '2',
+                  p1: SAMPLE_PLAYERS[1],
+                  team1Label: SAMPLE_PLAYERS[1].name,
+                  seed2: '3',
+                  p2: SAMPLE_PLAYERS[2],
+                  team2Label: SAMPLE_PLAYERS[2].name,
+                },
+              ]}
+            />
+            <BracketConnector />
+            <BracketRound
+              title="Final"
+              matches={[
+                {
+                  seed1: '?',
+                  p1: null,
+                  team1Label: 'TBD',
+                  seed2: '?',
+                  p2: null,
+                  team2Label: 'TBD',
+                  isFinal: true,
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const semi1 = playoffMatches.find((m) => m.round_label === PLAYOFF_ROUND_LABELS.semi1);
+  const semi2 = playoffMatches.find((m) => m.round_label === PLAYOFF_ROUND_LABELS.semi2);
+  const final = playoffMatches.find((m) => m.round_label === PLAYOFF_ROUND_LABELS.final);
+  const bronze = playoffMatches.find((m) => m.round_label === PLAYOFF_ROUND_LABELS.bronze);
+
   return (
     <div className="py-[18px] pb-24">
       <div className="px-[18px] pb-3.5">
         <div className="serif text-[22px] text-ink">Playoffs</div>
-        <div className="mt-0.5 text-xs text-ink-3">Top 4 seeds advance after round robin.</div>
+        <div className="mt-0.5 text-xs text-ink-3">
+          Tap a match to score it. Final &amp; 3rd-place fill in as the semis finish.
+        </div>
       </div>
 
       <div className="px-[18px]">
         <BracketRound
           title="Semifinals"
           matches={[
-            { seed1: '1', p1: SAMPLE_PLAYERS[0], seed2: '4', p2: SAMPLE_PLAYERS[3] },
-            { seed1: '2', p1: SAMPLE_PLAYERS[1], seed2: '3', p2: SAMPLE_PLAYERS[2] },
+            bracketMatchFromRow(tournamentId, semi1, '1'),
+            bracketMatchFromRow(tournamentId, semi2, '2'),
           ]}
         />
-        <div className="relative h-2">
-          <svg
-            className="absolute -top-1 h-10 w-full"
-            viewBox="0 0 100 40"
-            preserveAspectRatio="none"
-          >
-            <path d="M20 0 V20 H80 V40" stroke="var(--line)" strokeWidth="1" fill="none" strokeDasharray="2 3" />
-          </svg>
-        </div>
+        <BracketConnector />
         <BracketRound
           title="Final"
-          matches={[{ seed1: '?', p1: null, seed2: '?', p2: null, isFinal: true }]}
+          matches={[bracketMatchFromRow(tournamentId, final, '🏆', { gold: true })]}
         />
+        {bronze && (
+          <BracketRound
+            title="3rd place"
+            matches={[bracketMatchFromRow(tournamentId, bronze, '🥉')]}
+          />
+        )}
       </div>
     </div>
   );
 }
 
+function BracketConnector() {
+  return (
+    <div className="relative h-2">
+      <svg
+        className="absolute -top-1 h-10 w-full"
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+      >
+        <path d="M20 0 V20 H80 V40" stroke="var(--line)" strokeWidth="1" fill="none" strokeDasharray="2 3" />
+      </svg>
+    </div>
+  );
+}
+
+const SEMI_PLACEHOLDER_VALUES = new Set<string>([
+  ...Object.values(SEMI_WINNER_PLACEHOLDERS),
+  ...Object.values(SEMI_LOSER_PLACEHOLDERS),
+]);
+
+import type { AvatarPlayer } from '@/components/ui/Avatar';
+
 type BracketMatch = {
+  href?: string;
   seed1: string;
-  p1: { name: string; short: string; color: string } | null;
+  p1: AvatarPlayer | null;
+  team1Label: string;
+  score1?: number | null;
+  winner1?: boolean;
   seed2: string;
-  p2: { name: string; short: string; color: string } | null;
+  p2: AvatarPlayer | null;
+  team2Label: string;
+  score2?: number | null;
+  winner2?: boolean;
   isFinal?: boolean;
 };
+
+function bracketMatchFromRow(
+  tournamentId: string,
+  row: MatchRow | undefined,
+  seedBadge: string,
+  opts: { gold?: boolean } = {},
+): BracketMatch {
+  if (!row) {
+    return {
+      seed1: seedBadge,
+      p1: null,
+      team1Label: 'TBD',
+      seed2: seedBadge,
+      p2: null,
+      team2Label: 'TBD',
+      isFinal: !!opts.gold,
+    };
+  }
+
+  const isPending =
+    SEMI_PLACEHOLDER_VALUES.has(row.team_a_label) || SEMI_PLACEHOLDER_VALUES.has(row.team_b_label);
+  const isDone = !!row.completed_at;
+  const aWins = isDone && (row.team_a_score ?? 0) > (row.team_b_score ?? 0);
+  const bWins = isDone && (row.team_b_score ?? 0) > (row.team_a_score ?? 0);
+
+  return {
+    href: !isPending ? `/tournaments/${tournamentId}/match/${row.id}` : undefined,
+    seed1: seedBadge,
+    p1: SEMI_PLACEHOLDER_VALUES.has(row.team_a_label) ? null : firstAvatar(row.team_a_label),
+    team1Label: row.team_a_label,
+    score1: row.team_a_score,
+    winner1: aWins,
+    seed2: seedBadge,
+    p2: SEMI_PLACEHOLDER_VALUES.has(row.team_b_label) ? null : firstAvatar(row.team_b_label),
+    team2Label: row.team_b_label,
+    score2: row.team_b_score,
+    winner2: bWins,
+    isFinal: !!opts.gold,
+  };
+}
+
+function firstAvatar(label: string) {
+  const first = label.split(/\s*&\s*|\s*\/\s*/)[0]?.trim();
+  if (!first) return null;
+  return playerFromName(first);
+}
 
 function BracketRound({ title, matches }: { title: string; matches: BracketMatch[] }) {
   return (
     <div className="mb-3.5">
       <div className="mb-2 text-[11px] tracking-[0.08em] text-ink-3">{title.toUpperCase()}</div>
       <div className="grid gap-2">
-        {matches.map((m, i) => (
-          <div
-            key={i}
-            className="relative overflow-hidden rounded-2xl p-3"
-            style={{
-              background: m.isFinal ? 'var(--ink)' : '#fff',
-              color: m.isFinal ? 'var(--paper)' : 'var(--ink)',
-              border: `1px solid ${m.isFinal ? 'var(--ink)' : 'var(--line)'}`,
-            }}
-          >
-            {m.isFinal && (
-              <div className="absolute right-3 top-2" style={{ color: 'var(--court)' }}>{Icons.trophy}</div>
-            )}
-            <BracketLine seed={m.seed1} p={m.p1} dim={m.isFinal} />
+        {matches.map((m, i) => {
+          const card = (
             <div
-              className="my-1.5 h-px"
-              style={{ background: m.isFinal ? 'oklch(0.28 0.02 100)' : 'var(--line)' }}
-            />
-            <BracketLine seed={m.seed2} p={m.p2} dim={m.isFinal} />
-          </div>
-        ))}
+              className="relative overflow-hidden rounded-2xl p-3"
+              style={{
+                background: m.isFinal ? 'var(--ink)' : '#fff',
+                color: m.isFinal ? 'var(--paper)' : 'var(--ink)',
+                border: `1px solid ${m.isFinal ? 'var(--ink)' : 'var(--line)'}`,
+              }}
+            >
+              {m.isFinal && (
+                <div className="absolute right-3 top-2" style={{ color: 'var(--court)' }}>
+                  {Icons.trophy}
+                </div>
+              )}
+              <BracketLine
+                seed={m.seed1}
+                p={m.p1}
+                label={m.team1Label}
+                score={m.score1}
+                winner={m.winner1}
+                dim={m.isFinal}
+              />
+              <div
+                className="my-1.5 h-px"
+                style={{ background: m.isFinal ? 'oklch(0.28 0.02 100)' : 'var(--line)' }}
+              />
+              <BracketLine
+                seed={m.seed2}
+                p={m.p2}
+                label={m.team2Label}
+                score={m.score2}
+                winner={m.winner2}
+                dim={m.isFinal}
+              />
+            </div>
+          );
+          return m.href ? (
+            <Link key={i} href={m.href} className="block">
+              {card}
+            </Link>
+          ) : (
+            <div key={i}>{card}</div>
+          );
+        })}
       </div>
     </div>
   );
@@ -453,12 +675,19 @@ function BracketRound({ title, matches }: { title: string; matches: BracketMatch
 function BracketLine({
   seed,
   p,
+  label,
+  score,
+  winner,
   dim,
 }: {
   seed: string;
-  p: { name: string; short: string; color: string } | null;
+  p: AvatarPlayer | null;
+  label: string;
+  score?: number | null;
+  winner?: boolean;
   dim?: boolean;
 }) {
+  const isTBD = label === 'TBD' || label === '' || !label;
   return (
     <div className="flex items-center gap-2.5 px-0.5 py-1">
       <div
@@ -476,11 +705,29 @@ function BracketLine({
         />
       )}
       <div
-        className="flex-1 text-[13px] font-semibold"
-        style={{ color: p ? 'inherit' : dim ? 'oklch(0.6 0.02 100)' : 'var(--ink-3)' }}
+        className="flex-1 truncate text-[13px] font-semibold"
+        style={{
+          color: isTBD
+            ? dim
+              ? 'oklch(0.6 0.02 100)'
+              : 'var(--ink-3)'
+            : winner
+              ? dim
+                ? 'var(--court)'
+                : 'var(--court-deep)'
+              : 'inherit',
+        }}
       >
-        {p ? p.name : 'TBD'}
+        {isTBD ? 'TBD' : label}
       </div>
+      {score != null && (
+        <div
+          className="mono text-[14px] font-bold"
+          style={{ color: winner ? (dim ? 'var(--court)' : 'var(--court-deep)') : 'inherit' }}
+        >
+          {score}
+        </div>
+      )}
     </div>
   );
 }
