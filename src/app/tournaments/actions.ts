@@ -14,6 +14,14 @@ import {
   validateWhatsAppUrl,
 } from '@/lib/validation';
 import { generateMatchDrafts, type MatchScheme } from '@/lib/match-schemes';
+import {
+  ALL_PLAYOFF_LABELS,
+  seedSinglePoolPlayoffs,
+  seedTwoPoolPlayoffs,
+} from '@/lib/playoffs';
+import { propagateSemiOutcome } from '@/lib/playoffs-server';
+import { refreshTournamentStatus } from '@/lib/tournament-status-server';
+import type { StandingsMatch } from '@/lib/scoring';
 
 async function getAuthedClient() {
   const supabase = await createClient();
@@ -209,7 +217,9 @@ export async function generateMatches(_prev: FormState, formData: FormData): Pro
   });
   if (error) return { error: formatPgError(error) };
 
+  await refreshTournamentStatus(supabase, tournamentId);
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
   return { ok: `Generated ${count ?? drafts.length} matches.` };
 }
 
@@ -246,10 +256,134 @@ export async function scoreMatch(_prev: FormState, formData: FormData): Promise<
   });
   if (error) return { error: formatPgError(error) };
 
+  // If this was a semifinal, splice the winner/loser into the matching slots
+  // of the Final and 3rd-place matches so the bracket UI updates.
+  await propagateSemiOutcome(supabase, tournamentId, matchId);
+  await refreshTournamentStatus(supabase, tournamentId);
+
   revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
   revalidatePath('/');
   revalidatePath('/history');
   return { ok: 'Score saved.' };
+}
+
+// Seed the playoffs (2 semifinals + final + 3rd place) once the round-robin
+// is complete. Reads the standings, picks the top 4 teams (or runs the
+// rotating-partners draft), and inserts the bracket via the standard
+// app_replace_pending_matches RPC. Final + 3rd-place start with placeholder
+// team labels and get rewritten by propagateSemiOutcome.
+export async function generatePlayoffs(_prev: FormState, formData: FormData): Promise<FormState> {
+  const tournamentId = fieldString(formData, 'tournament_id');
+  const divisionIdRaw = fieldString(formData, 'division_id');
+  const divisionId = divisionIdRaw && divisionIdRaw !== 'open' ? divisionIdRaw : null;
+  const secondPoolDivisionRaw = fieldString(formData, 'second_pool_division_id');
+  const secondPoolDivisionId =
+    secondPoolDivisionRaw && secondPoolDivisionRaw !== 'open' ? secondPoolDivisionRaw : null;
+  const courtA = fieldString(formData, 'court_a') || 'Court 1';
+  const courtB = fieldString(formData, 'court_b') || 'Court 2';
+
+  if (!tournamentId) return { error: 'Missing tournament id.' };
+
+  const { supabase, user } = await getAuthedClient();
+  if (!user) return { error: 'Please sign in.' };
+
+  // Refuse to overwrite an existing bracket.
+  let existingQuery = supabase
+    .from('matches')
+    .select('id', { head: true, count: 'exact' })
+    .eq('tournament_id', tournamentId)
+    .in('round_label', ALL_PLAYOFF_LABELS);
+  existingQuery = divisionId
+    ? existingQuery.eq('division_id', divisionId)
+    : existingQuery.is('division_id', null);
+  const { count: existingCount } = await existingQuery;
+  if ((existingCount ?? 0) > 0) {
+    return { error: 'Playoffs are already seeded for this pool.' };
+  }
+
+  const completedMatches = async (
+    targetDivisionId: string | null,
+  ): Promise<StandingsMatch[]> => {
+    let query = supabase
+      .from('matches')
+      .select(
+        'id,team_a_label,team_b_label,team_a_score,team_b_score,winner_side,completed_at,match_games(team_a_score,team_b_score)',
+      )
+      .eq('tournament_id', tournamentId)
+      .not('completed_at', 'is', null)
+      .not('round_label', 'in', `(${ALL_PLAYOFF_LABELS.map((l) => `"${l}"`).join(',')})`);
+    query = targetDivisionId
+      ? query.eq('division_id', targetDivisionId)
+      : query.is('division_id', null);
+    const { data } = await query;
+    type Row = {
+      id: string;
+      team_a_label: string;
+      team_b_label: string;
+      team_a_score: number | null;
+      team_b_score: number | null;
+      winner_side: 'a' | 'b' | null;
+      match_games: { team_a_score: number; team_b_score: number }[] | null;
+    };
+    const rows = (data ?? []) as Row[];
+    return rows.map((r) => {
+      const games = r.match_games ?? [];
+      const games_won_a = games.filter((g) => g.team_a_score > g.team_b_score).length;
+      const games_won_b = games.filter((g) => g.team_b_score > g.team_a_score).length;
+      return {
+        id: r.id,
+        team_a_label: r.team_a_label,
+        team_b_label: r.team_b_label,
+        winner_side: r.winner_side,
+        team_a_score: r.team_a_score,
+        team_b_score: r.team_b_score,
+        games_won_a,
+        games_won_b,
+      };
+    });
+  };
+
+  // Refuse to seed while round-robin matches are still pending in the pool(s).
+  const pendingPools = secondPoolDivisionId ? [divisionId, secondPoolDivisionId] : [divisionId];
+  for (const poolId of pendingPools) {
+    let pendingQuery = supabase
+      .from('matches')
+      .select('id', { head: true, count: 'exact' })
+      .eq('tournament_id', tournamentId)
+      .is('completed_at', null)
+      .not('round_label', 'in', `(${ALL_PLAYOFF_LABELS.map((l) => `"${l}"`).join(',')})`);
+    pendingQuery = poolId ? pendingQuery.eq('division_id', poolId) : pendingQuery.is('division_id', null);
+    const { count } = await pendingQuery;
+    if ((count ?? 0) > 0) {
+      return {
+        error: `Finish all round-robin matches first — ${count} still pending in ${poolId ? 'one of the pools' : 'this pool'}.`,
+      };
+    }
+  }
+
+  const seed = secondPoolDivisionId
+    ? seedTwoPoolPlayoffs(
+        await completedMatches(divisionId),
+        await completedMatches(secondPoolDivisionId),
+        { courtA, courtB },
+      )
+    : seedSinglePoolPlayoffs(await completedMatches(divisionId), { courtA, courtB });
+
+  if (!seed.ok) return { error: seed.error };
+
+  const { error } = await supabase.rpc('app_replace_pending_matches', {
+    p_tournament_id: tournamentId,
+    p_division_id: divisionId,
+    p_matches: seed.drafts,
+  });
+  if (error) return { error: formatPgError(error) };
+
+  await refreshTournamentStatus(supabase, tournamentId);
+  revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath('/tournaments');
+  revalidatePath('/history');
+  return { ok: 'Playoff bracket created.' };
 }
 
 export async function editMatch(_prev: FormState, formData: FormData): Promise<FormState> {
