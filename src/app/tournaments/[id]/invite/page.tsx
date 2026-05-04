@@ -154,7 +154,7 @@ export default async function InvitePage({
 
         <div className="mt-5">
           <Link
-            href={`/scoreboard/${t.id}`}
+            href={`/tournaments/${t.id}`}
             className="block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight"
             style={{
               background: 'var(--ink)',
@@ -162,14 +162,7 @@ export default async function InvitePage({
               boxShadow: '0 4px 14px oklch(0.2 0.05 100 / 0.12)',
             }}
           >
-            Generate matches →
-          </Link>
-          <Link
-            href={`/tournaments/${t.id}`}
-            className="mt-2.5 block w-full rounded-2xl px-5 py-3 text-center text-sm font-semibold"
-            style={{ border: '1.5px solid var(--line)', color: 'var(--ink)' }}
-          >
-            Open tournament
+            Open scoreboard →
           </Link>
         </div>
       </div>

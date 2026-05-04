@@ -28,7 +28,7 @@ const TABS: Tab[] = [
     id: 'play',
     label: 'Play',
     href: '/tournaments',
-    match: (p) => p.startsWith('/tournaments') || p.startsWith('/scoreboard') || p.startsWith('/match'),
+    match: (p) => p.startsWith('/tournaments'),
     icon: (
       <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
         <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.6" />

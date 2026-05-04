@@ -5,11 +5,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-geist)', 'Geist', 'var(--font-inter)', 'Inter', '-apple-system', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-geist)', 'Geist', '-apple-system', 'system-ui', 'sans-serif'],
         serif: ['var(--font-instrument-serif)', '"Instrument Serif"', 'Georgia', 'serif'],
         mono: ['var(--font-jetbrains-mono)', '"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        // Legacy alias used by main's pages — Space Grotesk fallback to Geist.
-        display: ['var(--font-space-grotesk)', 'Space Grotesk', 'var(--font-geist)', 'system-ui', 'sans-serif'],
       },
       colors: {
         paper: 'var(--paper)',
@@ -23,18 +21,6 @@ const config: Config = {
         serve: 'var(--serve)',
         berry: 'var(--berry)',
         sky: 'var(--sky)',
-        // Legacy tokens referenced by main's pages (admin, tournaments, history, profile, scoreboard).
-        // Kept so those pages render until they migrate to the new system.
-        volt: '#D4FF00',
-        'volt-hover': '#BCE600',
-        'cyan-accent': '#00E5FF',
-        'dark-bg': '#0B0E14',
-        'card-bg': '#151A23',
-        'border-dark': '#222A38',
-        'text-muted': '#94A3B8',
-        success: '#10B981',
-        warning: '#F59E0B',
-        error: '#EF4444',
       },
       borderRadius: {
         card: '18px',

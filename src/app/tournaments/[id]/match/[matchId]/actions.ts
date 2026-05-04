@@ -35,6 +35,5 @@ export async function saveMatchScore({
   if (error) return { ok: false, error: formatPgError(error) };
 
   revalidatePath(`/tournaments/${existing.tournament_id}`);
-  revalidatePath(`/scoreboard/${existing.tournament_id}`);
   return { ok: true };
 }

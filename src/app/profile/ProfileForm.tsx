@@ -1,16 +1,24 @@
+'use client';
+
 import Link from 'next/link';
+import { useActionState } from 'react';
 import type { Profile } from '@/lib/types';
 import { TopBar } from '@/components/ui/TopBar';
 import { Icons } from '@/components/ui/icons';
 import { AvatarUpload } from '@/components/AvatarUpload';
+import { emptyFormState, type FormState } from '@/lib/forms';
+
+type SaveAction = (state: FormState, formData: FormData) => Promise<FormState>;
 
 export function ProfileForm({
   profile,
   saveAction,
 }: {
   profile: Profile;
-  saveAction: (formData: FormData) => Promise<void>;
+  saveAction: SaveAction;
 }) {
+  const [state, formAction, pending] = useActionState(saveAction, emptyFormState);
+
   return (
     <div className="flex min-h-full flex-col bg-paper">
       <TopBar
@@ -27,10 +35,27 @@ export function ProfileForm({
         }
       />
 
-      <form action={saveAction} className="flex-1 overflow-y-auto px-[18px] pb-6">
+      <form action={formAction} className="flex-1 overflow-y-auto px-[18px] pb-6">
         <div className="mb-4 flex justify-center">
           <AvatarUpload userId={profile.id} initialUrl={profile.avatar_url} />
         </div>
+
+        {state.error && (
+          <div
+            className="mb-3 rounded-xl border px-3 py-2 text-sm"
+            style={{ borderColor: 'var(--berry)', color: 'var(--berry)', background: 'oklch(0.96 0.04 12)' }}
+          >
+            {state.error}
+          </div>
+        )}
+        {state.ok && (
+          <div
+            className="mb-3 rounded-xl border px-3 py-2 text-sm"
+            style={{ borderColor: 'var(--court-deep)', color: 'var(--court-deep)', background: 'oklch(0.96 0.04 140)' }}
+          >
+            {state.ok}
+          </div>
+        )}
 
         <div className="space-y-3">
           <Field label="Display name" name="display_name" defaultValue={profile.display_name ?? ''} required />
@@ -85,14 +110,15 @@ export function ProfileForm({
 
         <button
           type="submit"
-          className="mt-5 block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight"
+          disabled={pending}
+          className="mt-5 block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight transition active:scale-[0.97] disabled:opacity-70"
           style={{
             background: 'var(--ink)',
             color: 'var(--paper)',
             boxShadow: '0 4px 14px oklch(0.2 0.05 100 / 0.12)',
           }}
         >
-          Save profile
+          {pending ? 'Saving…' : 'Save profile'}
         </button>
       </form>
     </div>
