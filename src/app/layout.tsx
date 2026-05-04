@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Serif, JetBrains_Mono, Geist } from 'next/font/google';
+import { Instrument_Serif, JetBrains_Mono, Geist, Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { TabBar } from '@/components/TabBar';
 
@@ -34,9 +34,16 @@ const geist = Geist({
   variable: '--font-geist',
 });
 
+// Loaded for legacy pages still referencing --font-inter / --font-space-grotesk.
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' });
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable} ${geist.variable}`}>
+    <html
+      lang="en"
+      className={`${instrumentSerif.variable} ${jetbrainsMono.variable} ${geist.variable} ${inter.variable} ${spaceGrotesk.variable}`}
+    >
       <body className="bg-paper text-ink">
         <div className="mx-auto flex min-h-[100dvh] max-w-[480px] flex-col">
           <main className="flex flex-1 flex-col">{children}</main>

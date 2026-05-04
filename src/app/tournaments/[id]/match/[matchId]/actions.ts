@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
+import { formatPgError } from '@/lib/forms';
 
 export async function saveMatchScore({
   matchId,
@@ -25,16 +26,15 @@ export async function saveMatchScore({
     .single();
   if (fetchError || !existing) return { ok: false, error: 'Match not found' };
 
-  const { error } = await supabase
-    .from('matches')
-    .update({
-      team_a_score: scoreA,
-      team_b_score: scoreB,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', matchId);
-  if (error) return { ok: false, error: error.message };
+  // Use main's RPC so RLS + standings stay correct. The score-entry screen
+  // captures a single game; pass it as a one-game match.
+  const { error } = await supabase.rpc('app_score_match_v2', {
+    p_match_id: matchId,
+    p_games: [[scoreA, scoreB]],
+  });
+  if (error) return { ok: false, error: formatPgError(error) };
 
   revalidatePath(`/tournaments/${existing.tournament_id}`);
+  revalidatePath(`/scoreboard/${existing.tournament_id}`);
   return { ok: true };
 }

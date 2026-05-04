@@ -2,17 +2,20 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
+import { formatPgError } from '@/lib/forms';
+import { validateTournamentFormat, validateTournamentName } from '@/lib/validation';
 
 type CreateInput = {
   name: string;
   format: string;
+  playerCount?: number;
 };
 
 type CreateResult = { id: string; error?: undefined } | { id?: undefined; error: string };
 
 export async function createTournamentClient(input: CreateInput): Promise<CreateResult> {
-  if (input.name.length < 3) {
-    return { error: 'Tournament name must be at least 3 characters.' };
+  for (const c of [validateTournamentName(input.name), validateTournamentFormat(input.format)]) {
+    if (!c.ok) return { error: c.error };
   }
 
   const supabase = await createClient();
@@ -23,20 +26,17 @@ export async function createTournamentClient(input: CreateInput): Promise<Create
     return { error: 'Please sign in to create a tournament.' };
   }
 
-  const { data, error } = await supabase
-    .from('tournaments')
-    .insert({
-      owner_user_id: user.id,
-      name: input.name,
-      format: input.format,
-    })
-    .select('id')
-    .single();
+  const { data: newId, error } = await supabase.rpc('app_create_tournament', {
+    p_name: input.name,
+    p_format: input.format,
+    p_whatsapp_group_url: null,
+    p_player_count: input.playerCount ?? 0,
+  });
 
-  if (error || !data) {
-    return { error: error?.message ?? 'Could not create tournament.' };
+  if (error || !newId) {
+    return { error: error ? formatPgError(error) : 'Could not create tournament.' };
   }
 
   revalidatePath('/tournaments');
-  return { id: data.id as string };
+  return { id: newId as string };
 }

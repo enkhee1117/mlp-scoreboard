@@ -1,35 +1,37 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { fieldOptionalNumber, fieldString, formatPgError, type FormState } from '@/lib/forms';
 
-function num(v: FormDataEntryValue | null): number | null {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-export async function saveProfile(formData: FormData) {
+export async function saveProfile(_prev: FormState, formData: FormData): Promise<FormState> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  if (!user) return { error: 'Please sign in to update your profile.' };
 
-  const update = {
-    display_name: String(formData.get('display_name') ?? '').trim() || null,
-    full_name:    String(formData.get('full_name')    ?? '').trim() || null,
-    gender:       (formData.get('gender') as string) || null,
-    dupr_id:      String(formData.get('dupr_id')      ?? '').trim() || null,
-    dupr_singles: num(formData.get('dupr_singles')),
-    dupr_doubles: num(formData.get('dupr_doubles')),
-    bio:          String(formData.get('bio')          ?? '').trim() || null,
-  };
+  const display_name = fieldString(formData, 'display_name');
+  const full_name = fieldString(formData, 'full_name');
+  const gender = fieldString(formData, 'gender');
+  const dupr_id = fieldString(formData, 'dupr_id');
+  const dupr_singles = fieldOptionalNumber(formData, 'dupr_singles');
+  const dupr_doubles = fieldOptionalNumber(formData, 'dupr_doubles');
+  const bio = fieldString(formData, 'bio');
 
-  const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
-  if (error) redirect(`/profile?error=${encodeURIComponent(error.message)}`);
+  if (!display_name) return { error: 'Display name is required.' };
+
+  const { error } = await supabase.rpc('app_save_profile', {
+    p_display_name: display_name,
+    p_full_name: full_name || null,
+    p_gender: gender || null,
+    p_dupr_id: dupr_id || null,
+    p_dupr_singles: dupr_singles,
+    p_dupr_doubles: dupr_doubles,
+    p_bio: bio || null,
+  });
+  if (error) return { error: formatPgError(error) };
 
   revalidatePath('/profile');
-  redirect('/profile?saved=1');
+  return { ok: 'Profile saved.' };
 }
 
 export async function setAvatarUrl(url: string) {

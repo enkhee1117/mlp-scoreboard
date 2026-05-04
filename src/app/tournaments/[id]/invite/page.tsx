@@ -7,9 +7,9 @@ import { Avatar, playerFromName } from '@/components/ui/Avatar';
 import { Chip } from '@/components/ui/Chip';
 import { Icons } from '@/components/ui/icons';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { addTournamentPlayer, generateRoundRobinMatches, updateTournamentWhatsApp } from '@/app/tournaments/actions';
 import { InviteTopBar } from './InviteTopBar';
 import { WhatsAppToggle } from './WhatsAppToggle';
+import { addInvitePlayer, setInviteWhatsApp } from './actions';
 
 type PlayerRow = {
   id: string;
@@ -93,7 +93,7 @@ export default async function InvitePage({
         <WhatsAppToggle
           tournamentId={t.id}
           initialUrl={t.whatsapp_group_url ?? null}
-          updateAction={updateTournamentWhatsApp}
+          updateAction={setInviteWhatsApp}
         />
 
         <SectionHeader
@@ -103,7 +103,7 @@ export default async function InvitePage({
         />
 
         <form
-          action={addTournamentPlayer}
+          action={addInvitePlayer}
           className="mb-3 flex gap-2"
         >
           <input type="hidden" name="tournament_id" value={t.id} />
@@ -153,26 +153,23 @@ export default async function InvitePage({
         </div>
 
         <div className="mt-5">
-          <form action={generateRoundRobinMatches}>
-            <input type="hidden" name="tournament_id" value={t.id} />
-            <button
-              type="submit"
-              className="block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight"
-              style={{
-                background: 'var(--ink)',
-                color: 'var(--paper)',
-                boxShadow: '0 4px 14px oklch(0.2 0.05 100 / 0.12)',
-              }}
-            >
-              Generate matches →
-            </button>
-          </form>
+          <Link
+            href={`/scoreboard/${t.id}`}
+            className="block w-full rounded-2xl px-5 py-[18px] text-center text-base font-semibold tracking-tight"
+            style={{
+              background: 'var(--ink)',
+              color: 'var(--paper)',
+              boxShadow: '0 4px 14px oklch(0.2 0.05 100 / 0.12)',
+            }}
+          >
+            Generate matches →
+          </Link>
           <Link
             href={`/tournaments/${t.id}`}
             className="mt-2.5 block w-full rounded-2xl px-5 py-3 text-center text-sm font-semibold"
             style={{ border: '1.5px solid var(--line)', color: 'var(--ink)' }}
           >
-            Open scoreboard
+            Open tournament
           </Link>
         </div>
       </div>

@@ -45,6 +45,7 @@ export function CreateWizard() {
       const result = await createTournamentClient({
         name: data.name.trim(),
         format: legacyFormat(data.format),
+        playerCount: data.playerCount,
       });
       if (result.error || !result.id) {
         setError(result.error ?? 'Could not create tournament.');
