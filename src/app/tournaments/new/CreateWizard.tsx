@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { TopBar } from '@/components/ui/TopBar';
 import { IconBtn } from '@/components/ui/IconBtn';
 import { BigButton } from '@/components/ui/BigButton';
@@ -18,6 +18,8 @@ type WizardData = {
   playerCount: number;
   courts: number;
   rounds: number;
+  rosterMode: 'placeholders' | 'names';
+  playerNames: string[];
 };
 
 const STEP_LABELS = ['Name', 'Format', 'Pairing', 'Roster', 'Schedule', 'Review'];
@@ -34,26 +36,74 @@ export function CreateWizard() {
     playerCount: 8,
     courts: 2,
     rounds: 5,
+    rosterMode: 'placeholders',
+    playerNames: ['', '', '', '', '', '', '', ''],
   });
-  const set = <K extends keyof WizardData>(k: K, v: WizardData[K]) => setData((d) => ({ ...d, [k]: v }));
+  const set = <K extends keyof WizardData>(k: K, v: WizardData[K]) =>
+    setData((d) => ({ ...d, [k]: v }));
 
-  const canNext = step !== 0 || data.name.trim().length > 0;
+  const isFixed = data.format.startsWith('fp');
+  const manualFp = isFixed && data.pairing === 'manual';
+
+  // Pairing choices vary by format — reset to a sane default whenever the
+  // format flips between round-robin and fixed-partners.
+  useEffect(() => {
+    if (isFixed && !['manual', 'balanced', 'random'].includes(data.pairing)) {
+      set('pairing', 'manual');
+    }
+    if (!isFixed && !['balanced', 'random', 'snake'].includes(data.pairing)) {
+      set('pairing', 'balanced');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.format]);
+
+  const namesValid =
+    data.rosterMode !== 'names' ||
+    data.playerNames.slice(0, data.playerCount).filter((n) => n.trim().length >= 2).length ===
+      data.playerCount;
+
+  const canNext = (() => {
+    if (step === 0) return data.name.trim().length > 0;
+    if (step === 3 && data.rosterMode === 'names') return namesValid;
+    return true;
+  })();
 
   const finish = () => {
     startTransition(async () => {
       setError(null);
       const result = await createTournamentClient({
         name: data.name.trim(),
-        format: legacyFormat(data.format),
+        format: data.format,
+        pairing: data.pairing,
         playerCount: data.playerCount,
+        playerNames:
+          data.rosterMode === 'names'
+            ? data.playerNames.slice(0, data.playerCount).map((n) => n.trim())
+            : undefined,
+        courts: data.courts,
+        rounds: data.rounds,
       });
       if (result.error || !result.id) {
         setError(result.error ?? 'Could not create tournament.');
         return;
       }
-      router.push(`/tournaments/${result.id}/invite?new=1`);
+      // Manual fixed-partners → land on invite/roster so the organizer can
+      // wire teams. Otherwise jump straight to the scoreboard with matches.
+      if (result.manualTeams) {
+        router.push(`/tournaments/${result.id}/invite?new=1&manual=1`);
+      } else if (result.matchesGenerated > 0) {
+        router.push(
+          `/tournaments/${result.id}?ok=${encodeURIComponent(
+            `Generated ${result.matchesGenerated} matches`,
+          )}`,
+        );
+      } else {
+        router.push(`/tournaments/${result.id}/invite?new=1`);
+      }
     });
   };
+
+  const ctaLabel = manualFp ? 'Set up teams →' : 'Generate matches →';
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -88,7 +138,7 @@ export function CreateWizard() {
         {step === 2 && <StepPairing data={data} set={set} />}
         {step === 3 && <StepRoster data={data} set={set} />}
         {step === 4 && <StepSchedule data={data} set={set} />}
-        {step === 5 && <StepReview data={data} />}
+        {step === 5 && <StepReview data={data} manualTeams={manualFp} />}
 
         {error && (
           <div
@@ -106,18 +156,17 @@ export function CreateWizard() {
             Continue
           </BigButton>
         ) : (
-          <BigButton tone="court" disabled={isPending || data.name.trim().length === 0} onClick={finish}>
-            {isPending ? 'Creating…' : 'Generate matches →'}
+          <BigButton
+            tone="court"
+            disabled={isPending || data.name.trim().length === 0}
+            onClick={finish}
+          >
+            {isPending ? 'Creating…' : ctaLabel}
           </BigButton>
         )}
       </div>
     </div>
   );
-}
-
-function legacyFormat(f: FormatId): string {
-  if (f.startsWith('fp')) return 'fixed_partners';
-  return 'round_robin';
 }
 
 function StepName({ data, set }: { data: WizardData; set: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void }) {
@@ -194,8 +243,8 @@ function StepPairing({ data, set }: { data: WizardData; set: <K extends keyof Wi
   const isFixed = data.format.startsWith('fp');
   const opts: Array<{ id: PairingId; title: string; sub: string; emoji: string }> = isFixed
     ? [
-        { id: 'manual', title: "I'll set teams", sub: 'Drag to pair people up.', emoji: '✋' },
-        { id: 'balanced', title: 'Auto-balance', sub: 'High DUPR pairs with low DUPR.', emoji: '⚖️' },
+        { id: 'manual', title: "I'll set teams", sub: 'Pair people up on the roster screen.', emoji: '✋' },
+        { id: 'balanced', title: 'Auto-pair (adjacent)', sub: 'P1+P2, P3+P4 in roster order.', emoji: '⚖️' },
         { id: 'random', title: 'Surprise me', sub: 'Random teams. Chaos welcome.', emoji: '🎰' },
       ]
     : [
@@ -244,13 +293,30 @@ function StepPairing({ data, set }: { data: WizardData; set: <K extends keyof Wi
 }
 
 function StepRoster({ data, set }: { data: WizardData; set: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void }) {
+  const setName = (idx: number, value: string) => {
+    const next = data.playerNames.slice();
+    while (next.length <= idx) next.push('');
+    next[idx] = value;
+    set('playerNames', next);
+  };
+
+  const setCount = (n: number) => {
+    const clamped = Math.max(4, Math.min(32, n));
+    if (data.playerNames.length < clamped) {
+      const padded = data.playerNames.slice();
+      while (padded.length < clamped) padded.push('');
+      set('playerNames', padded);
+    }
+    set('playerCount', clamped);
+  };
+
   return (
     <div>
       <div className="serif mb-1.5 text-[28px] leading-[1.1] text-ink">
         How many<br />are showing up?
       </div>
-      <div className="mb-[22px] text-[13px] text-ink-3">
-        We&rsquo;ll create placeholders. Rename or invite real players next.
+      <div className="mb-[18px] text-[13px] text-ink-3">
+        Pick a count. Toggle below to type names now or use placeholders and rename later.
       </div>
 
       <div
@@ -263,14 +329,14 @@ function StepRoster({ data, set }: { data: WizardData; set: <K extends keyof Wiz
         <div className="mt-1 text-xs uppercase tracking-[0.06em] text-ink-3">PLAYERS</div>
         <div className="mt-[18px] flex justify-center gap-2">
           <button
-            onClick={() => set('playerCount', Math.max(4, data.playerCount - 1))}
+            onClick={() => setCount(data.playerCount - 1)}
             className="h-11 w-11 rounded-xl bg-white text-[22px]"
             style={{ border: '1.5px solid var(--line)', color: 'var(--ink)' }}
           >
             −
           </button>
           <button
-            onClick={() => set('playerCount', Math.min(32, data.playerCount + 1))}
+            onClick={() => setCount(data.playerCount + 1)}
             className="h-11 w-11 rounded-xl text-[22px]"
             style={{ background: 'var(--ink)', color: 'var(--paper)' }}
           >
@@ -279,13 +345,13 @@ function StepRoster({ data, set }: { data: WizardData; set: <K extends keyof Wiz
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {[4, 6, 8, 10, 12, 16].map((n) => {
           const on = data.playerCount === n;
           return (
             <button
               key={n}
-              onClick={() => set('playerCount', n)}
+              onClick={() => setCount(n)}
               className="rounded-full px-4 py-2.5 text-[13px] font-semibold"
               style={{
                 background: on ? 'var(--ink)' : '#fff',
@@ -298,6 +364,46 @@ function StepRoster({ data, set }: { data: WizardData; set: <K extends keyof Wiz
           );
         })}
       </div>
+
+      <div
+        className="mb-3 grid grid-cols-2 gap-1 rounded-xl p-1"
+        style={{ background: 'var(--paper-2)' }}
+      >
+        {(['placeholders', 'names'] as const).map((mode) => {
+          const on = data.rosterMode === mode;
+          return (
+            <button
+              key={mode}
+              onClick={() => set('rosterMode', mode)}
+              className="rounded-[10px] py-2 text-[12px] font-semibold"
+              style={{
+                background: on ? 'var(--ink)' : 'transparent',
+                color: on ? 'var(--paper)' : 'var(--ink-2)',
+              }}
+            >
+              {mode === 'placeholders' ? 'Use placeholders' : 'Type names now'}
+            </button>
+          );
+        })}
+      </div>
+
+      {data.rosterMode === 'names' && (
+        <div className="grid gap-2">
+          {Array.from({ length: data.playerCount }).map((_, i) => (
+            <input
+              key={i}
+              value={data.playerNames[i] ?? ''}
+              onChange={(e) => setName(i, e.target.value)}
+              placeholder={`Player ${i + 1}`}
+              className="rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
+              style={{ border: '1px solid var(--line)' }}
+            />
+          ))}
+          <div className="text-[11px] text-ink-3">
+            Names need at least 2 characters. You can edit them anytime from the roster screen.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -370,16 +476,16 @@ const PAIRING_LABEL: Record<PairingId, string> = {
   manual: 'Manual',
 };
 
-function StepReview({ data }: { data: WizardData }) {
+function StepReview({ data, manualTeams }: { data: WizardData; manualTeams: boolean }) {
   const games = Math.floor(data.playerCount / 4) * data.rounds;
   const rows: Array<[string, string]> = [
     ['Name', data.name || '—'],
     ['Format', FORMAT_LABEL[data.format]],
     ['Pairing', PAIRING_LABEL[data.pairing]],
-    ['Players', `${data.playerCount}`],
+    ['Players', `${data.playerCount}${data.rosterMode === 'names' ? ' (named)' : ''}`],
     ['Courts', `${data.courts}`],
     ['Rounds', `${data.rounds}`],
-    ['Total games', `~${games}`],
+    ['Total games', manualTeams ? '—' : `~${games}`],
   ];
   return (
     <div>
@@ -406,7 +512,17 @@ function StepReview({ data }: { data: WizardData }) {
       >
         <span style={{ color: 'var(--court-deep)', flexShrink: 0 }}>{Icons.spark}</span>
         <div>
-          <strong>Heads up:</strong> we&rsquo;ll generate Round 1 immediately. You can keep adding rounds as games finish.
+          {manualTeams ? (
+            <>
+              <strong>Manual teams:</strong> we&rsquo;ll create the tournament and roster, then drop you on
+              the invite screen so you can pair people up before the first round.
+            </>
+          ) : (
+            <>
+              <strong>Heads up:</strong> we&rsquo;ll generate Round 1 immediately and land you on the
+              scoreboard.
+            </>
+          )}
         </div>
       </div>
     </div>
