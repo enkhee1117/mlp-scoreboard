@@ -2,6 +2,7 @@ export type AvatarPlayer = {
   name?: string;
   short: string;
   color: string;
+  imageUrl?: string | null;
 };
 
 type AvatarProps = {
@@ -12,6 +13,20 @@ type AvatarProps = {
 
 export function Avatar({ player, size = 40, ring = false }: AvatarProps) {
   if (!player) return null;
+  const ringStyle = ring ? '0 0 0 2px var(--paper), 0 0 0 4px var(--court)' : 'none';
+  if (player.imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={player.imageUrl}
+        alt={player.name ?? ''}
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size, boxShadow: ringStyle }}
+      />
+    );
+  }
   return (
     <div
       className="flex shrink-0 items-center justify-center rounded-full"
@@ -23,7 +38,7 @@ export function Avatar({ player, size = 40, ring = false }: AvatarProps) {
         fontWeight: 600,
         fontSize: size * 0.36,
         color: 'oklch(0.25 0.04 60)',
-        boxShadow: ring ? '0 0 0 2px var(--paper), 0 0 0 4px var(--court)' : 'none',
+        boxShadow: ringStyle,
       }}
     >
       {player.short}
@@ -49,6 +64,6 @@ export function shortFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function playerFromName(name: string): AvatarPlayer {
-  return { name, short: shortFromName(name), color: colorForName(name) };
+export function playerFromName(name: string, imageUrl?: string | null): AvatarPlayer {
+  return { name, short: shortFromName(name), color: colorForName(name), imageUrl: imageUrl ?? null };
 }

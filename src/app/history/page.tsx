@@ -7,6 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { Avatar, playerFromName } from '@/components/ui/Avatar';
 import { Icons } from '@/components/ui/icons';
 import { computePlayerStandings, type StandingsMatch } from '@/lib/scoring';
+import { MatchSearch } from './MatchSearch';
 
 type TournamentMemberRow = {
   role: string;
@@ -143,35 +144,39 @@ export default async function HistoryPage() {
           .
         </div>
 
-        {linked.length === 0 ? (
-          <div
-            className="mb-4 rounded-2xl bg-white p-4 text-[13px]"
-            style={{ border: '1px solid var(--line)', color: 'var(--ink-2)' }}
-          >
-            <strong>Nothing linked yet.</strong> Pick which player you are on each
-            tournament&apos;s roster page to start tracking your matches here.
-            {unclaimed.length > 0 && (
-              <div className="mt-2.5 grid gap-1.5">
-                {unclaimed.slice(0, 5).map((t) => (
-                  <Link
-                    key={t.id}
-                    href={`/tournaments/${t.id}/invite`}
-                    className="block rounded-xl px-3 py-2 text-[12px] font-semibold"
-                    style={{ background: 'var(--paper-2)', color: 'var(--ink)' }}
-                  >
-                    Pick yourself in {t.name} →
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
+        {linked.length > 0 && (
           <div className="mb-[22px] grid grid-cols-3 gap-2.5">
             <StatTile label="Played" value={aggregate.matchesPlayed} icon="🎾" />
             <StatTile label="Won" value={aggregate.wins} icon="🏆" />
             <StatTile label="Win %" value={aggregate.winPct === null ? '—' : `${aggregate.winPct}%`} icon="📈" />
           </div>
         )}
+
+        {unclaimed.length > 0 && (
+          <div
+            className="mb-4 rounded-2xl bg-white p-4 text-[13px]"
+            style={{ border: '1px solid var(--line)', color: 'var(--ink-2)' }}
+          >
+            <strong>
+              {linked.length === 0 ? 'Nothing linked yet.' : 'Link yourself in more tournaments.'}
+            </strong>{' '}
+            Pick which player you are on each tournament&apos;s roster page to track your matches here.
+            <div className="mt-2.5 grid gap-1.5">
+              {unclaimed.slice(0, 5).map((t) => (
+                <Link
+                  key={t.id}
+                  href={`/tournaments/${t.id}/invite`}
+                  className="block rounded-xl px-3 py-2 text-[12px] font-semibold"
+                  style={{ background: 'var(--paper-2)', color: 'var(--ink)' }}
+                >
+                  Pick yourself in {t.name} →
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <MatchSearch />
 
         {linked.length > 0 && aggregate.matchesPlayed > 0 && (
           <>
