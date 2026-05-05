@@ -91,6 +91,34 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
   redirect(`/tournaments/${tournamentId}/invite?ok=Player%20updated`);
 }
 
+export async function claimInvitePlayer(formData: FormData): Promise<void> {
+  const tournamentId = String(formData.get('tournament_id') ?? '').trim();
+  const playerId = String(formData.get('player_id') ?? '').trim();
+  if (!tournamentId || !playerId) {
+    redirect(`/tournaments/${tournamentId}/invite?error=Missing%20identifiers`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { error } = await supabase.rpc('app_claim_tournament_player', {
+    p_player_id: playerId,
+  });
+  if (error) {
+    redirect(
+      `/tournaments/${tournamentId}/invite?error=${encodeURIComponent(formatPgError(error))}`,
+    );
+  }
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${tournamentId}/invite`);
+  revalidatePath('/history');
+  redirect(`/tournaments/${tournamentId}/invite?ok=Linked%20to%20your%20stats`);
+}
+
 export async function removeInvitePlayer(formData: FormData): Promise<void> {
   const tournamentId = String(formData.get('tournament_id') ?? '').trim();
   const playerId = String(formData.get('player_id') ?? '').trim();
