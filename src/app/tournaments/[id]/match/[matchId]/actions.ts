@@ -56,10 +56,10 @@ export async function saveMatchScore({
 
 export async function claimMatchPlayer({
   playerId,
-  matchId,
+  tournamentId,
 }: {
   playerId: string;
-  matchId: string;
+  tournamentId: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
@@ -77,24 +77,15 @@ export async function claimMatchPlayer({
     return { ok: false, error: 'Set your display name on /profile first.' };
   }
 
-  const { data: matchRow } = await supabase
-    .from('matches')
-    .select('tournament_id')
-    .eq('id', matchId)
-    .single();
-  const tournamentId = matchRow?.tournament_id as string | undefined;
-
   const { error } = await supabase.rpc('app_claim_tournament_player_with_name', {
     p_player_id: playerId,
     p_display_name: profileName,
   });
   if (error) return { ok: false, error: formatPgError(error) };
 
-  if (tournamentId) {
-    revalidatePath(`/tournaments/${tournamentId}`);
-    revalidatePath(`/tournaments/${tournamentId}/invite`);
-    revalidatePath(`/tournaments/${tournamentId}/match/[matchId]`, 'page');
-  }
+  revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${tournamentId}/invite`);
+  revalidatePath(`/tournaments/${tournamentId}/match/[matchId]`, 'page');
   revalidatePath('/history');
   return { ok: true };
 }

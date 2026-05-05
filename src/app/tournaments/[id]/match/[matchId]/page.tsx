@@ -36,7 +36,13 @@ export default async function MatchPage({ params }: PageProps) {
   const { id, matchId } = await params;
   const supabase = await createClient();
 
-  const [{ data }, { data: siblings }, { data: roster }, { data: { user } }] = await Promise.all([
+  const [
+    { data },
+    { data: siblings },
+    { data: roster },
+    { data: tournament },
+    { data: { user } },
+  ] = await Promise.all([
     supabase
       .from('matches')
       .select('id,tournament_id,round_label,court_label,team_a_label,team_b_label,team_a_score,team_b_score,winner_side,completed_at')
@@ -52,12 +58,44 @@ export default async function MatchPage({ params }: PageProps) {
       .from('tournament_players')
       .select('id,display_name,profile_id')
       .eq('tournament_id', id),
+    supabase.from('tournaments').select('owner_user_id').eq('id', id).single(),
     supabase.auth.getUser(),
   ]);
   if (!data) notFound();
   const row = data as MatchRow;
   const players = (roster ?? []) as RosterPlayer[];
+  const ownerId = (tournament as { owner_user_id: string } | null)?.owner_user_id ?? null;
   const userHasClaimedSlot = !!user && players.some((p) => p.profile_id === user.id);
+
+  // Decide whether this user is allowed to record a score. Managers (owner +
+  // organizer + admin) always can; players may score matches they're in.
+  // Spectators see a read-only view so a stray tap can't blow away saved
+  // scores via a silently-failed RPC.
+  let canScore = false;
+  if (user) {
+    if (user.id === ownerId) {
+      canScore = true;
+    } else {
+      const { data: member } = await supabase
+        .from('tournament_members')
+        .select('role')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      const role = member?.role ?? null;
+      if (role === 'organizer' || role === 'admin') {
+        canScore = true;
+      } else if (role !== null) {
+        const myPlayer = players.find((p) => p.profile_id === user.id);
+        if (myPlayer) {
+          const labels = [row.team_a_label, row.team_b_label].flatMap((label) =>
+            label.split(/\s*&\s*|\s*\/\s*/).map((s) => s.trim()),
+          );
+          canScore = labels.includes(myPlayer.display_name);
+        }
+      }
+    }
+  }
   // Map player names to {id, claimable} so MatchScreen can offer "I am
   // [name]" buttons for unclaimed slots whose label matches a roster row.
   const claimables = !user || userHasClaimedSlot
@@ -119,6 +157,7 @@ export default async function MatchPage({ params }: PageProps) {
       position={idx >= 0 ? idx + 1 : 0}
       total={sameSection.length}
       claimables={claimables}
+      canScore={canScore}
     />
   );
 }
