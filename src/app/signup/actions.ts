@@ -32,6 +32,16 @@ export async function signUpWithPassword(_prev: FormState, formData: FormData): 
   });
   if (error) return { error: error.message };
 
+  // Supabase returns a fake success when the email already exists (anti-
+  // enumeration). The dead giveaway: data.user is set but its identities
+  // array is empty. Surface a clear error instead of silently sending the
+  // user back to the login page where their new password won't work.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return {
+      error: 'An account with this email already exists. Try signing in instead.',
+    };
+  }
+
   // Dev-mode convenience: skip the email-confirmation round-trip. Auto-confirm
   // the new user via the service-role admin client, then sign them in so the
   // session cookie is set and the redirect lands them logged in.
