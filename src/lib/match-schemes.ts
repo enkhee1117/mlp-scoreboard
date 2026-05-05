@@ -117,6 +117,21 @@ export function generateSingleElimination(
 }
 
 // ---------------------------------------------------------------------------
+// Scheme 4: Fixed partners with manually composed teams.
+// Same circle-method scheduling as scheme 2, but the caller supplies the
+// list of team labels directly instead of pairing adjacent players in the
+// roster. Used by the "I'll set teams" flow on the invite page.
+// ---------------------------------------------------------------------------
+export function generateFixedPartnersFromTeams(
+  teams: string[],
+  options: { courts: number },
+): MatchDraft[] {
+  const cleaned = teams.map((t) => t.trim()).filter(Boolean);
+  if (cleaned.length < 2) return [];
+  return circleMethodSchedule(cleaned, Math.max(1, Math.min(16, options.courts)));
+}
+
+// ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
 
