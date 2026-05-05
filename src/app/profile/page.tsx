@@ -48,7 +48,7 @@ export default async function ProfilePage({
   }
 
   const displayName = profile.display_name ?? 'Player';
-  const player = playerFromName(displayName);
+  const player = playerFromName(displayName, profile.avatar_url);
   const handle = displayName.toLowerCase().split(' ').filter(Boolean)[0] ?? 'player';
   const dupr = profile.dupr_doubles;
   const duprSingles = profile.dupr_singles;

@@ -22,11 +22,13 @@ import {
 } from '@/lib/scoring';
 import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 import { GeneratePlayoffsForm } from './GeneratePlayoffsForm';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { deleteTournament, resetTournamentMatches } from './settings-actions';
 
 type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
-    tab?: 'matches' | 'standings' | 'bracket';
+    tab?: 'matches' | 'standings' | 'bracket' | 'settings';
     done?: string;
     ok?: string;
     error?: string;
@@ -52,6 +54,9 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const tab = sp.tab ?? 'matches';
   const showDone = sp.done === '1';
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // Self-heal lifecycle status alongside the data fetch — the page does not
   // read the new status, so we don't need to await it before the page query
@@ -96,6 +101,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const rrPending = rrMatches.filter((row) => !row.completed_at).length;
   const canGeneratePlayoffs =
     !playoffsExist && rrMatches.length > 0 && rrPending === 0;
+  const isOwner = !!user && user.id === t.owner_user_id;
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -140,11 +146,24 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
           className="mt-4 flex gap-1 rounded-xl p-1"
           style={{ background: 'oklch(0.24 0.02 100)' }}
         >
-          {([
-            ['matches', 'Matches', liveCount],
-            ['standings', 'Standings', 0],
-            ['bracket', 'Bracket', 0],
-          ] as Array<['matches' | 'standings' | 'bracket', string, number]>).map(([id_, label, badge]) => {
+          {(
+            [
+              ['matches', 'Matches', liveCount],
+              ['standings', 'Standings', 0],
+              ['bracket', 'Bracket', 0],
+              ...(isOwner
+                ? ([['settings', 'Settings', 0]] as Array<[
+                    'matches' | 'standings' | 'bracket' | 'settings',
+                    string,
+                    number,
+                  ]>)
+                : []),
+            ] as Array<[
+              'matches' | 'standings' | 'bracket' | 'settings',
+              string,
+              number,
+            ]>
+          ).map(([id_, label, badge]) => {
             const on = tab === id_;
             return (
               <Link
@@ -191,6 +210,9 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
 
         {tab === 'matches' && (
           <MatchesTab tournamentId={id} matches={rrMatches} showDone={showDone} />
+        )}
+        {tab === 'settings' && isOwner && (
+          <SettingsTab tournamentId={id} matchCount={m.length} />
         )}
         {tab === 'standings' && <StandingsTab matches={m} />}
         {tab === 'bracket' && (
@@ -382,7 +404,51 @@ function TeamLineSimple({
 function playersFromLabel(label: string) {
   // Labels are stored as "Alice & Bob" or just "Alice".
   const parts = label.split(/\s*&\s*|\s*\/\s*/).filter(Boolean);
-  return parts.slice(0, 2).map(playerFromName);
+  return parts.slice(0, 2).map((s) => playerFromName(s));
+}
+
+function SettingsTab({
+  tournamentId,
+  matchCount,
+}: {
+  tournamentId: string;
+  matchCount: number;
+}) {
+  return (
+    <div className="px-[18px] py-[18px] pb-24">
+      <SectionHeader title="Danger zone" />
+      <div className="grid gap-3">
+        <form action={resetTournamentMatches}>
+          <input type="hidden" name="tournament_id" value={tournamentId} />
+          <button
+            type="submit"
+            disabled={matchCount === 0}
+            className="w-full rounded-2xl bg-white p-4 text-left disabled:opacity-50"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            <div className="text-sm font-semibold text-ink">Reset matches</div>
+            <div className="mt-1 text-xs text-ink-3">
+              Wipes all {matchCount} match{matchCount === 1 ? '' : 'es'} (pending and completed) and
+              returns the tournament to draft. The roster stays.
+            </div>
+          </button>
+        </form>
+        <form action={deleteTournament}>
+          <input type="hidden" name="tournament_id" value={tournamentId} />
+          <button
+            type="submit"
+            className="w-full rounded-2xl p-4 text-left"
+            style={{ border: '1px solid var(--berry)', color: 'var(--berry)', background: '#fff' }}
+          >
+            <div className="text-sm font-semibold">Delete tournament</div>
+            <div className="mt-1 text-xs" style={{ color: 'var(--berry)' }}>
+              Permanently removes the tournament, roster, matches, and scores. This cannot be undone.
+            </div>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function StandingsTab({ matches }: { matches: MatchRow[] }) {

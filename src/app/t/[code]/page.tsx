@@ -456,7 +456,7 @@ function NotFound({ code }: { code: string }) {
 
 function playersFromLabel(label: string) {
   const parts = label.split(/\s*&\s*|\s*\/\s*/).filter(Boolean);
-  return parts.slice(0, 2).map(playerFromName);
+  return parts.slice(0, 2).map((s) => playerFromName(s));
 }
 
 function roundNumber(label: string): number {
