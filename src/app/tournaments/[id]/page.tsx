@@ -26,6 +26,9 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { deleteTournament, resetTournamentMatches } from './settings-actions';
 import { GenerateMatchesPanel } from './invite/GenerateMatchesPanel';
 import { ManualTeamsPanel } from './invite/ManualTeamsPanel';
+import { RosterRow } from './invite/RosterRow';
+import { addInvitePlayer } from './invite/actions';
+import { ScoreboardClaimBanner } from './ScoreboardClaimBanner';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -79,7 +82,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
       .limit(200),
     supabase
       .from('tournament_players')
-      .select('id,display_name')
+      .select('id,display_name,email,profile_id')
       .eq('tournament_id', id)
       .order('created_at', { ascending: true }),
     // Fire-and-forget status refresh in parallel; tab order doesn't depend on
@@ -104,7 +107,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const canGeneratePlayoffs =
     !playoffsExist && rrMatches.length > 0 && rrPending === 0;
   const isOwner = !!user && user.id === t.owner_user_id;
-  let isManager = isOwner;
+  let memberRole: string | null = null;
   if (user && !isOwner) {
     const { data: member } = await supabase
       .from('tournament_members')
@@ -112,10 +115,21 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
       .eq('tournament_id', id)
       .eq('user_id', user.id)
       .maybeSingle();
-    isManager = member?.role === 'organizer' || member?.role === 'admin';
+    memberRole = member?.role ?? null;
   }
+  const isManager = isOwner || memberRole === 'organizer' || memberRole === 'admin';
+  const isMember = isOwner || memberRole !== null;
   const playerCount = (players ?? []).length;
   const hasMatches = m.length > 0;
+  type PlayerLike = { id: string; display_name: string; profile_id?: string | null };
+  const rosterPlayers = (players ?? []) as PlayerLike[];
+  const userHasClaimedSlot = !!user && rosterPlayers.some((p) => p.profile_id === user.id);
+  const claimableForBanner =
+    user && isMember && !userHasClaimedSlot
+      ? rosterPlayers
+          .filter((p) => !p.profile_id)
+          .map((p) => ({ id: p.id, displayName: p.display_name }))
+      : [];
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -223,7 +237,15 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
         )}
 
         {tab === 'matches' && (
-          <MatchesTab tournamentId={id} matches={rrMatches} showDone={showDone} />
+          <>
+            {claimableForBanner.length > 0 && (
+              <ScoreboardClaimBanner
+                tournamentId={id}
+                claimables={claimableForBanner}
+              />
+            )}
+            <MatchesTab tournamentId={id} matches={rrMatches} showDone={showDone} />
+          </>
         )}
         {tab === 'settings' && isManager && (
           <SettingsTab
@@ -231,12 +253,16 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
             tournamentFormat={t.format}
             matchCount={m.length}
             playerCount={playerCount}
-            roster={(players ?? []).map((p) => ({
-              id: p.id as string,
-              display_name: p.display_name as string,
+            roster={rosterPlayers.map((p) => ({
+              id: p.id,
+              display_name: p.display_name,
+              email: (p as PlayerLike & { email?: string | null }).email ?? null,
+              profile_id: p.profile_id ?? null,
             }))}
             hasMatches={hasMatches}
             isOwner={isOwner}
+            currentUserId={user?.id ?? null}
+            userHasClaimedSlot={userHasClaimedSlot}
           />
         )}
         {tab === 'standings' && <StandingsTab matches={m} />}
@@ -440,36 +466,88 @@ function SettingsTab({
   roster,
   hasMatches,
   isOwner,
+  currentUserId,
+  userHasClaimedSlot,
 }: {
   tournamentId: string;
   tournamentFormat: string;
   matchCount: number;
   playerCount: number;
-  roster: { id: string; display_name: string }[];
+  roster: { id: string; display_name: string; email: string | null; profile_id: string | null }[];
   hasMatches: boolean;
   isOwner: boolean;
+  currentUserId: string | null;
+  userHasClaimedSlot: boolean;
 }) {
   const isFixed = tournamentFormat === 'fixed_partners';
+  const rosterForGeneration = roster.map((p) => ({ id: p.id, display_name: p.display_name }));
   return (
     <div className="px-[18px] py-[18px] pb-24">
+      <SectionHeader title="Roster" mute={`${roster.length} confirmed`} />
+
+      <form action={addInvitePlayer} className="mb-3 grid gap-2">
+        <input type="hidden" name="tournament_id" value={tournamentId} />
+        <input
+          name="display_name"
+          placeholder="Player name"
+          required
+          className="rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
+          style={{ border: '1px solid var(--line)' }}
+        />
+        <div className="flex gap-2">
+          <input
+            name="email"
+            type="email"
+            placeholder="Email (optional — links them to history)"
+            className="flex-1 rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
+            style={{ border: '1px solid var(--line)' }}
+          />
+          <button
+            type="submit"
+            className="rounded-xl px-4 text-sm font-semibold"
+            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+          >
+            Add
+          </button>
+        </div>
+      </form>
+
+      <div className="mb-5 grid gap-2">
+        {roster.length === 0 ? (
+          <div
+            className="rounded-2xl bg-white p-4 text-center text-sm text-ink-3"
+            style={{ border: '1px dashed var(--line)' }}
+          >
+            No players yet. Add a few above to get started.
+          </div>
+        ) : (
+          roster.map((p) => (
+            <RosterRow
+              key={p.id}
+              tournamentId={tournamentId}
+              player={p}
+              currentUserId={currentUserId}
+              userHasClaimedSlot={userHasClaimedSlot}
+              canManage
+            />
+          ))
+        )}
+      </div>
+
       <SectionHeader title={hasMatches ? 'Regenerate schedule' : 'Build the schedule'} />
       {playerCount === 0 ? (
         <div
           className="mb-4 rounded-2xl bg-white p-4 text-center text-sm text-ink-3"
           style={{ border: '1px dashed var(--line)' }}
         >
-          Add players on the{' '}
-          <Link
-            href={`/tournaments/${tournamentId}/invite`}
-            className="font-semibold underline"
-            style={{ color: 'var(--ink)' }}
-          >
-            roster page
-          </Link>{' '}
-          before generating matches.
+          Add players above before generating matches.
         </div>
       ) : isFixed ? (
-        <ManualTeamsPanel tournamentId={tournamentId} roster={roster} hasMatches={hasMatches} />
+        <ManualTeamsPanel
+          tournamentId={tournamentId}
+          roster={rosterForGeneration}
+          hasMatches={hasMatches}
+        />
       ) : (
         <GenerateMatchesPanel
           tournamentId={tournamentId}

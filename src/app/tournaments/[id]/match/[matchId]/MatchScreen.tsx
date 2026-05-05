@@ -30,6 +30,10 @@ type Props = {
   // labels — null when the user is signed out, or has already claimed a
   // slot in this tournament.
   claimables?: Claimable[] | null;
+  // Whether this user is allowed to record a score for this match. Drives
+  // the keypad / End button visibility so spectators don't see UI that
+  // silently fails on submit.
+  canScore?: boolean;
 };
 
 const KEYPAD: Array<string> = ['1', '2', '3', '+1', '4', '5', '6', '−1', '7', '8', '9', '⌫', 'C', '0', '', '▶'];
@@ -53,6 +57,7 @@ export function MatchScreen({
   position = 0,
   total = 0,
   claimables = null,
+  canScore = false,
 }: Props) {
   const router = useRouter();
   const returnHref = `/tournaments/${tournamentId}?tab=${returnTab}`;
@@ -121,13 +126,26 @@ export function MatchScreen({
     }
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const finish = () => {
+    if (!canScore) {
+      setSaveError('Only the organizer (or a player in this match) can record a score.');
+      return;
+    }
+    setSaveError(null);
     setDone(true);
     setJustFinished(true);
     setConfetti(true);
     setTimeout(() => setConfetti(false), 3000);
     startTransition(async () => {
-      await saveMatchScore({ matchId, scoreA, scoreB });
+      const res = await saveMatchScore({ matchId, scoreA, scoreB });
+      if (!res.ok) {
+        setSaveError(res.error ?? 'Could not save the score.');
+        setDone(false);
+        setJustFinished(false);
+        setConfetti(false);
+      }
     });
   };
 
@@ -211,7 +229,7 @@ export function MatchScreen({
       <ClaimBanner
         teamALabel={teamALabel}
         teamBLabel={teamBLabel}
-        matchId={matchId}
+        tournamentId={tournamentId}
         claimables={claimables}
       />
 
@@ -241,8 +259,28 @@ export function MatchScreen({
         />
       </div>
 
-      {!done ? (
+      {!done && !canScore ? (
+        <div className="bg-paper px-[18px] pt-3.5 pb-6">
+          <div
+            className="rounded-2xl p-4 text-center"
+            style={{ background: '#fff', border: '1px dashed var(--line)' }}
+          >
+            <div className="text-[13px] font-semibold text-ink">View only</div>
+            <div className="mt-1 text-[12px] text-ink-3">
+              Only the organizer or a player in this match can record the score.
+            </div>
+          </div>
+        </div>
+      ) : !done ? (
         <div className="bg-paper px-3.5 pt-2.5 pb-4">
+          {saveError && (
+            <div
+              className="mb-2 rounded-xl border px-3 py-2 text-[12px]"
+              style={{ borderColor: 'var(--berry)', color: 'var(--berry)', background: 'oklch(0.96 0.04 12)' }}
+            >
+              {saveError}
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-2">
             {KEYPAD.map((k, i) => {
               if (k === '') return <div key={i} />;
@@ -432,12 +470,12 @@ function parseTeam(label: string) {
 function ClaimBanner({
   teamALabel,
   teamBLabel,
-  matchId,
+  tournamentId,
   claimables,
 }: {
   teamALabel: string;
   teamBLabel: string;
-  matchId: string;
+  tournamentId: string;
   claimables: Claimable[] | null;
 }) {
   const [pending, setPending] = useState<string | null>(null);
@@ -457,7 +495,7 @@ function ClaimBanner({
   const onClaim = async (player: Claimable) => {
     setPending(player.id);
     setError(null);
-    const res = await claimMatchPlayer({ playerId: player.id, matchId });
+    const res = await claimMatchPlayer({ playerId: player.id, tournamentId });
     setPending(null);
     if (!res.ok) {
       setError(res.error ?? 'Could not claim that slot.');
