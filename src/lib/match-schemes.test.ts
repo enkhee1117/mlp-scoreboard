@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   generateFixedPartners,
+  generateFixedPartnersFromTeams,
   generateRotatingPartners,
   generateSingleElimination,
   generateMatchDrafts,
@@ -126,6 +127,50 @@ describe('generateSingleElimination', () => {
       expect(d.team_a_label).toMatch(/ & /);
       expect(d.team_b_label).toMatch(/ & /);
     }
+  });
+});
+
+describe('generateFixedPartnersFromTeams (manual pairing)', () => {
+  const teams = ['Alice & Bob', 'Carol & Dan', 'Eve & Finn', 'Gail & Ivan'];
+
+  it('schedules every pair of teams exactly once for an even team count', () => {
+    const drafts = generateFixedPartnersFromTeams(teams, { courts: 2 });
+    expect(drafts).toHaveLength(6); // C(4,2)
+    const seen = new Set<string>();
+    for (const d of drafts) {
+      const key = [d.team_a_label, d.team_b_label].sort().join('|');
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+  });
+
+  it('preserves the team labels supplied by the caller', () => {
+    const drafts = generateFixedPartnersFromTeams(teams, { courts: 1 });
+    const labels = new Set(drafts.flatMap((d) => [d.team_a_label, d.team_b_label]));
+    for (const team of teams) {
+      expect(labels.has(team)).toBe(true);
+    }
+    expect(labels.has('BYE')).toBe(false);
+  });
+
+  it('handles odd team counts with a BYE per round', () => {
+    const drafts = generateFixedPartnersFromTeams(teams.slice(0, 3), { courts: 1 });
+    expect(drafts).toHaveLength(3); // C(3,2)
+    for (const d of drafts) {
+      expect(d.team_a_label).not.toBe('BYE');
+      expect(d.team_b_label).not.toBe('BYE');
+    }
+  });
+
+  it('returns no drafts for fewer than two teams', () => {
+    expect(generateFixedPartnersFromTeams([], { courts: 2 })).toEqual([]);
+    expect(generateFixedPartnersFromTeams(['Solo & Player'], { courts: 2 })).toEqual([]);
+  });
+
+  it('rotates court labels up to courts parameter', () => {
+    const drafts = generateFixedPartnersFromTeams(teams, { courts: 2 });
+    const courts = drafts.slice(0, 2).map((d) => d.court_label);
+    expect(courts).toEqual(['Court 1', 'Court 2']);
   });
 });
 

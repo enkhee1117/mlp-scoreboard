@@ -2,13 +2,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import type { Tournament } from '@/lib/types';
-import { TopBar } from '@/components/ui/TopBar';
-import { Avatar, playerFromName } from '@/components/ui/Avatar';
-import { Chip } from '@/components/ui/Chip';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { InviteTopBar } from './InviteTopBar';
 import { WhatsAppToggle } from './WhatsAppToggle';
 import { ShareCodeCard } from './ShareCodeCard';
+import { RosterRow } from './RosterRow';
+import { GenerateMatchesPanel } from './GenerateMatchesPanel';
+import { ManualTeamsPanel } from './ManualTeamsPanel';
+import { formatInviteCode } from '@/lib/invite-codes';
 import { addInvitePlayer, setInviteWhatsApp } from './actions';
 
 type PlayerRow = {
@@ -23,25 +24,33 @@ export default async function InvitePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ new?: string; ok?: string; error?: string }>;
+  searchParams: Promise<{ new?: string; manual?: string; ok?: string; error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   const isNew = sp.new === '1';
   const supabase = await createClient();
 
-  const [{ data: tournament }, { data: players }] = await Promise.all([
+  const [{ data: tournament }, { data: players }, { count: matchCount }] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),
     supabase
       .from('tournament_players')
       .select('id,display_name,email,profile_id')
       .eq('tournament_id', id)
       .order('created_at', { ascending: true }),
+    supabase
+      .from('matches')
+      .select('id', { head: true, count: 'exact' })
+      .eq('tournament_id', id),
   ]);
   if (!tournament) notFound();
   const t = tournament as Tournament;
   const roster = (players ?? []) as PlayerRow[];
-  const inviteCode = makeInviteCode(t.id, t.name);
+  const inviteCode = formatInviteCode(t.invite_code);
+  const hasMatches = (matchCount ?? 0) > 0;
+  const isFixed = t.format === 'fixed_partners';
+  // Manual mode: explicit ?manual=1, or fixed-partners with no matches yet.
+  const showManual = isFixed && (sp.manual === '1' || !hasMatches);
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
@@ -80,7 +89,12 @@ export default async function InvitePage({
           </div>
         )}
 
-        <ShareCodeCard inviteCode={inviteCode} tournamentId={t.id} tournamentName={t.name} />
+        <ShareCodeCard
+          inviteCode={inviteCode}
+          rawInviteCode={t.invite_code}
+          tournamentId={t.id}
+          tournamentName={t.name}
+        />
 
         <WhatsAppToggle
           tournamentId={t.id}
@@ -121,7 +135,7 @@ export default async function InvitePage({
           </div>
         </form>
 
-        <div className="grid gap-2">
+        <div className="mb-5 grid gap-2">
           {roster.length === 0 ? (
             <div
               className="rounded-2xl bg-white p-4 text-center text-sm text-ink-3"
@@ -130,35 +144,30 @@ export default async function InvitePage({
               No players yet. Add a few above to get started.
             </div>
           ) : (
-            roster.map((p) => {
-              const player = playerFromName(p.display_name);
-              const linked = !!p.profile_id;
-              const invited = !linked && !!p.email;
-              return (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 rounded-[14px] bg-white px-3.5 py-2.5"
-                  style={{ border: '1px solid var(--line)' }}
-                >
-                  <Avatar player={player} size={40} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-ink">{p.display_name}</div>
-                    <div className="truncate text-[11px] text-ink-3">
-                      {linked
-                        ? 'Signed up · results post to their history'
-                        : invited
-                          ? `${p.email} · will link when they sign up`
-                          : 'Placeholder · add an email to link to history'}
-                    </div>
-                  </div>
-                  <Chip tone={linked ? 'court' : invited ? 'default' : 'ghost'}>
-                    {linked ? 'IN' : invited ? 'INVITED' : 'PLACEHOLDER'}
-                  </Chip>
-                </div>
-              );
-            })
+            roster.map((p) => <RosterRow key={p.id} tournamentId={t.id} player={p} />)
           )}
         </div>
+
+        {roster.length > 0 && (
+          <SectionHeader title={hasMatches ? 'Schedule' : 'Build the schedule'} />
+        )}
+
+        {showManual && roster.length > 0 ? (
+          <ManualTeamsPanel
+            tournamentId={t.id}
+            roster={roster.map((p) => ({ id: p.id, display_name: p.display_name }))}
+            hasMatches={hasMatches}
+          />
+        ) : (
+          roster.length > 0 && (
+            <GenerateMatchesPanel
+              tournamentId={t.id}
+              format={t.format}
+              rosterCount={roster.length}
+              hasMatches={hasMatches}
+            />
+          )
+        )}
 
         <div className="mt-5">
           <Link
@@ -176,14 +185,4 @@ export default async function InvitePage({
       </div>
     </div>
   );
-}
-
-function makeInviteCode(id: string, name: string): string {
-  const prefix = name
-    .replace(/[^A-Za-z]/g, '')
-    .slice(0, 3)
-    .toUpperCase()
-    .padEnd(3, 'X');
-  const suffix = id.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase().padEnd(4, '0');
-  return `${prefix}-${suffix}`;
 }
