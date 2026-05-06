@@ -54,20 +54,23 @@ export default async function LoginPage({
         <LoginForm next={sp.next ?? '/'} />
 
         <Link
+          href={`/signup${sp.next && sp.next !== '/' ? `?next=${encodeURIComponent(sp.next)}` : ''}`}
+          className="mt-3 block rounded-2xl py-[18px] text-center text-base font-semibold tracking-tight transition active:scale-[0.97]"
+          style={{
+            background: 'transparent',
+            color: 'var(--paper)',
+            border: '1.5px solid var(--court)',
+          }}
+        >
+          New here? Create an account
+        </Link>
+
+        <Link
           href="/join"
           className="mt-2 block rounded-2xl py-3.5 text-center text-sm font-medium opacity-70"
         >
           I have an invite code →
         </Link>
-
-        <div className="mt-2 flex items-center justify-end text-[11px] opacity-60">
-          <Link
-            href={`/signup${sp.next && sp.next !== '/' ? `?next=${encodeURIComponent(sp.next)}` : ''}`}
-            className="hover:opacity-100"
-          >
-            New here? Create an account
-          </Link>
-        </div>
 
         <div className="mt-3.5 text-center text-[11px] opacity-40">
           By continuing you agree to our terms. We don&rsquo;t spam.
