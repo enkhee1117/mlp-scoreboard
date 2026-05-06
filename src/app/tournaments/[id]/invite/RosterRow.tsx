@@ -19,6 +19,7 @@ type Props = {
     profile_id: string | null;
     gender?: Gender;
     phone?: string | null;
+    dupr?: number | null;
   };
   // The signed-in user's user_id, when they're a member of this tournament
   // and haven't claimed a slot yet. Drives the "This is me" affordance.
@@ -47,6 +48,7 @@ export function RosterRow({
   const [email, setEmail] = useState(player.email ?? '');
   const [phone, setPhone] = useState(player.phone ?? '');
   const [gender, setGender] = useState<Gender>(player.gender ?? null);
+  const [dupr, setDupr] = useState(player.dupr != null ? String(player.dupr) : '');
 
   const linked = !!player.profile_id;
   const invited = !linked && (!!player.email || !!player.phone);
@@ -78,7 +80,14 @@ export function RosterRow({
       <div className="flex items-center gap-3">
         <Avatar player={playerFromName(player.display_name)} size={40} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink">{player.display_name}</div>
+          <div className="flex items-center gap-1.5">
+            <div className="truncate text-sm font-semibold text-ink">{player.display_name}</div>
+            {player.dupr != null && (
+              <span className="mono text-[10px] font-bold tracking-tight text-ink-3">
+                {Number(player.dupr).toFixed(2)}
+              </span>
+            )}
+          </div>
           <div className="truncate text-[11px] text-ink-3">{subtext}</div>
         </div>
         <Chip tone={tone}>{status}</Chip>
@@ -145,6 +154,25 @@ export function RosterRow({
               placeholder="Phone +15551234567"
             />
             <input type="hidden" name="gender" value={gender ?? ''} />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-[0.06em] text-ink-3">
+                DUPR
+              </span>
+              <input
+                name="dupr"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="2"
+                max="8"
+                value={dupr}
+                onChange={(e) => setDupr(e.target.value)}
+                placeholder="3.20"
+                className="mono w-20 rounded-lg bg-white px-2 py-1.5 text-[13px] text-ink outline-none"
+                style={{ border: '1px solid var(--line)' }}
+              />
+              <span className="text-[11px] text-ink-3">2.00 – 8.00</span>
+            </div>
             {showGender && (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-[0.06em] text-ink-3">

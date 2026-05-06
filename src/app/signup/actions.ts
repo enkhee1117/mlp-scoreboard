@@ -8,6 +8,10 @@ import { validatePassword } from '@/lib/validation';
 import { safeNext } from '@/lib/auth-redirect';
 import { normalizeE164 } from '@/lib/phone';
 
+// Phone-only signup. Routed through the service-role admin client because
+// the public auth.signUp endpoint refuses phone payloads when the project's
+// "Phone provider" toggle is off — we don't need SMS verification at all,
+// just the row in auth.users + a session, so we go direct.
 export async function signUpWithPassword(_prev: FormState, formData: FormData): Promise<FormState> {
   const phoneRaw = fieldString(formData, 'phone');
   const phone = normalizeE164(phoneRaw);
@@ -24,39 +28,29 @@ export async function signUpWithPassword(_prev: FormState, formData: FormData): 
   const passCheck = validatePassword(password);
   if (!passCheck.ok) return { error: passCheck.error };
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
+  const admin = createAdminClient();
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
     phone,
     password,
-    options: { data: { display_name } },
+    phone_confirm: true,
+    user_metadata: { display_name },
   });
-  if (error) return { error: error.message };
-
-  // Supabase returns a fake-success response when the phone is already
-  // registered (anti-enumeration). identities.length === 0 is the tell.
-  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-    return {
-      error: 'An account with this phone already exists. Try signing in instead.',
-    };
+  if (createErr) {
+    const msg = createErr.message?.toLowerCase() ?? '';
+    if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+      return { error: 'An account with this phone already exists. Try signing in instead.' };
+    }
+    return { error: createErr.message };
+  }
+  if (!created.user) {
+    return { error: 'Could not create the account. Try again in a moment.' };
   }
 
-  // Dev-mode convenience: skip the SMS verification round-trip. Auto-confirm
-  // the new user via the service-role admin client, then sign them in so the
-  // session cookie is set and the redirect lands them logged in.
-  if (data.user && !data.session) {
-    try {
-      const admin = createAdminClient();
-      await admin.auth.admin.updateUserById(data.user.id, { phone_confirm: true });
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ phone, password });
-      if (signInErr) {
-        return { ok: 'Account created. Sign in below.', error: undefined };
-      }
-    } catch (e) {
-      console.error('auto-confirm failed', e);
-      return {
-        ok: 'Account created. If sign-in fails, verify your phone first.',
-      };
-    }
+  // Sign the new user in so the cookie is set on the redirect.
+  const supabase = await createClient();
+  const { error: signInErr } = await supabase.auth.signInWithPassword({ phone, password });
+  if (signInErr) {
+    return { ok: 'Account created. Sign in below.' };
   }
 
   redirect(next);

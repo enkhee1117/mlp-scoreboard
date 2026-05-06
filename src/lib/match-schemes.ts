@@ -27,6 +27,7 @@ const courtLabelFor = (idx: number, courts: number) =>
 // back to the original blind shuffle.
 // ---------------------------------------------------------------------------
 export type GenderTag = 'm' | 'f' | 'x';
+export type PairingMode = 'random' | 'balanced' | 'snake';
 export type RotatingPartnersOptions = {
   rounds: number;
   courts: number;
@@ -35,6 +36,10 @@ export type RotatingPartnersOptions = {
   // Optional parallel array — entry i is the gender of the player at
   // players[i]. Required when genderMode is 'mixed' or 'same'.
   genders?: (GenderTag | null | undefined)[];
+  // Optional parallel array of DUPR scores. When pairingMode is 'balanced'
+  // or 'snake' the generator uses these to distribute strength evenly.
+  duprs?: (number | null | undefined)[];
+  pairingMode?: PairingMode;
 };
 
 export function generateRotatingPartners(
@@ -45,6 +50,7 @@ export function generateRotatingPartners(
   const courts = Math.max(1, Math.min(16, options.courts));
   const rng = options.rng ?? Math.random;
   const mode = options.genderMode ?? 'open';
+  const pairingMode = options.pairingMode ?? 'random';
   const cleaned = players.map((p) => p.trim()).filter(Boolean);
   if (cleaned.length < 4) return [];
 
@@ -54,6 +60,15 @@ export function generateRotatingPartners(
       courts,
       rng,
       mode,
+    });
+  }
+
+  if (pairingMode === 'balanced' || pairingMode === 'snake') {
+    return generateBalancedRotatingPartners(cleaned, options.duprs ?? [], {
+      rounds,
+      courts,
+      rng,
+      pairingMode,
     });
   }
 
@@ -70,6 +85,76 @@ export function generateRotatingPartners(
         team_b_label: `${slice[2]} & ${slice[3]}`,
       });
     }
+  }
+  return drafts;
+}
+
+// Balanced rotating partners: each round, redistribute players across the
+// available games so each game has a similar total skill, and within each
+// game pair high-DUPR with low-DUPR to keep both teams competitive.
+//
+// Algorithm (per round):
+//   1. Sort players by DUPR descending (stable; fall back to 3.20 for null).
+//   2. Snake-distribute into N games — game 0 gets the highest, game 1 the
+//      2nd-highest, …, then snake back so the lowest DUPR player joins game
+//      0 alongside the highest. Each game ends up with one high, one mid-
+//      high, one mid-low, one low.
+//   3. Within each game-of-4, sort by DUPR. With players p1 (high), p2, p3,
+//      p4 (low):
+//        - balanced  → team A = p1 + p4, team B = p2 + p3
+//        - snake     → team A = p1 + p2, team B = p3 + p4 (similar-skill teams)
+//   4. To keep partners changing across rounds while preserving the balanced
+//      distribution, rotate the snake offset by `r % gameCount` each round.
+function generateBalancedRotatingPartners(
+  players: string[],
+  duprs: (number | null | undefined)[],
+  opts: { rounds: number; courts: number; rng: () => number; pairingMode: 'balanced' | 'snake' },
+): MatchDraft[] {
+  // Pair players with their DUPR (default 3.20 when missing) so the sort is
+  // deterministic on inputs without scores.
+  const indexed = players.map((name, i) => ({
+    name,
+    dupr: typeof duprs[i] === 'number' ? (duprs[i] as number) : 3.2,
+    rand: 0,
+  }));
+  const drafts: MatchDraft[] = [];
+  const gameCount = Math.floor(indexed.length / 4);
+  if (gameCount === 0) return drafts;
+
+  for (let r = 0; r < opts.rounds; r += 1) {
+    // Assign a per-round random tiebreaker so equal-DUPR players don't always
+    // land in the same game.
+    for (const p of indexed) p.rand = opts.rng();
+    const sorted = [...indexed].sort((a, b) => b.dupr - a.dupr || a.rand - b.rand);
+
+    // Snake-distribute. We rotate the starting game by r so the same player
+    // doesn't end up in the same position every round.
+    const buckets: Array<typeof indexed> = Array.from({ length: gameCount }, () => []);
+    sorted.forEach((p, i) => {
+      const layer = Math.floor(i / gameCount);
+      const within = i % gameCount;
+      const target =
+        layer % 2 === 0
+          ? (within + r) % gameCount
+          : (gameCount - 1 - within + r) % gameCount;
+      buckets[target].push(p);
+    });
+
+    // Pair within each game.
+    buckets.forEach((bucket, g) => {
+      if (bucket.length < 4) return;
+      const [p1, p2, p3, p4] = [...bucket]
+        .sort((a, b) => b.dupr - a.dupr)
+        .slice(0, 4);
+      const teamA = opts.pairingMode === 'balanced' ? `${p1.name} & ${p4.name}` : `${p1.name} & ${p2.name}`;
+      const teamB = opts.pairingMode === 'balanced' ? `${p2.name} & ${p3.name}` : `${p3.name} & ${p4.name}`;
+      drafts.push({
+        round_label: `Round ${r + 1}`,
+        court_label: courtLabelFor(g, opts.courts),
+        team_a_label: teamA,
+        team_b_label: teamB,
+      });
+    });
   }
   return drafts;
 }
@@ -266,6 +351,8 @@ export type GenerateMatchesInput =
       rng?: () => number;
       genderMode?: 'open' | 'mixed' | 'same';
       genders?: (GenderTag | null | undefined)[];
+      pairingMode?: PairingMode;
+      duprs?: (number | null | undefined)[];
     }
   | { scheme: 'fixed_partners'; players: string[]; courts: number }
   | { scheme: 'single_elimination'; players: string[]; courts: number };
@@ -279,6 +366,8 @@ export function generateMatchDrafts(input: GenerateMatchesInput): MatchDraft[] {
         rng: input.rng,
         genderMode: input.genderMode,
         genders: input.genders,
+        pairingMode: input.pairingMode,
+        duprs: input.duprs,
       });
     case 'fixed_partners':
       return generateFixedPartners(input.players, { courts: input.courts });

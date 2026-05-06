@@ -22,6 +22,7 @@ export type InviteeMatch = {
   display_name: string;
   phone: string | null;
   gender: 'm' | 'f' | 'x' | null;
+  dupr: number | null;
 };
 
 export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean; error?: string }> {
@@ -29,6 +30,7 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
   const displayName = String(formData.get('display_name') ?? '').trim();
   const emailRaw = String(formData.get('email') ?? '').trim();
   const phoneRaw = String(formData.get('phone') ?? '').trim();
+  const duprRaw = String(formData.get('dupr') ?? '').trim();
   if (!tournamentId || displayName.length < 2) {
     return { ok: false, error: 'Player name must be at least 2 characters.' };
   }
@@ -37,6 +39,14 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
   }
   if (phoneRaw && !/^\+[1-9]\d{6,14}$/.test(phoneRaw)) {
     return { ok: false, error: 'Phone must be in E.164 format (e.g. +15551234567).' };
+  }
+  let dupr: number | null = null;
+  if (duprRaw) {
+    const n = Number(duprRaw);
+    if (!Number.isFinite(n) || n < 2 || n > 8) {
+      return { ok: false, error: 'DUPR must be between 2 and 8.' };
+    }
+    dupr = Math.round(n * 100) / 100;
   }
 
   const supabase = await createClient();
@@ -50,6 +60,7 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
     p_display_name: displayName,
     p_email: emailRaw || null,
     p_phone: phoneRaw || null,
+    p_dupr: dupr,
   });
   if (error) return { ok: false, error: formatPgError(error) };
 
@@ -78,8 +89,17 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
   const playerId = String(formData.get('player_id') ?? '').trim();
   const displayName = String(formData.get('display_name') ?? '').trim();
   const emailRaw = String(formData.get('email') ?? '').trim();
+  const phoneRaw = String(formData.get('phone') ?? '').trim();
   const genderRaw = String(formData.get('gender') ?? '').trim().toLowerCase();
   const gender = genderRaw === 'm' || genderRaw === 'f' || genderRaw === 'x' ? genderRaw : null;
+  const duprRaw = String(formData.get('dupr') ?? '').trim();
+  let dupr: number | null = null;
+  if (duprRaw) {
+    const n = Number(duprRaw);
+    if (Number.isFinite(n) && n >= 2 && n <= 8) {
+      dupr = Math.round(n * 100) / 100;
+    }
+  }
   if (!tournamentId || !playerId) {
     redirect(`/tournaments/${tournamentId}/invite?error=Missing%20player%20id`);
   }
@@ -105,6 +125,8 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
     p_display_name: displayName,
     p_email: emailRaw || null,
     p_gender: gender,
+    p_phone: phoneRaw || null,
+    p_dupr: dupr,
   });
   if (error) {
     redirect(
@@ -239,22 +261,28 @@ export async function generateMatchesFromRoster(formData: FormData): Promise<voi
   const [{ data: tournament }, { data: roster }] = await Promise.all([
     supabase
       .from('tournaments')
-      .select('format,gender_mode')
+      .select('format,gender_mode,pairing_mode')
       .eq('id', tournamentId)
       .single(),
     supabase
       .from('tournament_players')
-      .select('display_name,gender')
+      .select('display_name,gender,dupr')
       .eq('tournament_id', tournamentId)
       .order('created_at', { ascending: true }),
   ]);
   if (!tournament) {
     redirect(`/tournaments/${tournamentId}/invite?error=Tournament%20not%20found`);
   }
-  const rosterRows = (roster ?? []) as { display_name: string; gender: 'm' | 'f' | 'x' | null }[];
+  const rosterRows = (roster ?? []) as {
+    display_name: string;
+    gender: 'm' | 'f' | 'x' | null;
+    dupr: number | null;
+  }[];
   const players = rosterRows.map((r) => r.display_name).filter(Boolean);
   const genders = rosterRows.map((r) => r.gender ?? null);
+  const duprs = rosterRows.map((r) => (r.dupr != null ? Number(r.dupr) : null));
   const genderMode = (tournament as { gender_mode?: 'open' | 'mixed' | 'same' }).gender_mode ?? 'open';
+  const pairingMode = (tournament as { pairing_mode?: 'random' | 'balanced' | 'snake' }).pairing_mode ?? 'random';
 
   if (genderMode === 'mixed' || genderMode === 'same') {
     const males = rosterRows.filter((r) => r.gender === 'm').length;
@@ -279,7 +307,16 @@ export async function generateMatchesFromRoster(formData: FormData): Promise<voi
   const scheme = pickScheme(tournament!.format);
   const drafts: MatchDraft[] =
     scheme === 'rotating_partners'
-      ? generateMatchDrafts({ scheme, players, rounds, courts, genderMode, genders })
+      ? generateMatchDrafts({
+          scheme,
+          players,
+          rounds,
+          courts,
+          genderMode,
+          genders,
+          pairingMode,
+          duprs,
+        })
       : generateMatchDrafts({ scheme, players, courts });
 
   if (drafts.length === 0) {

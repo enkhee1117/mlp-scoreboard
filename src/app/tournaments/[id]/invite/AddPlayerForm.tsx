@@ -24,6 +24,7 @@ type Props = {
 export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Props) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [dupr, setDupr] = useState('');
   const [matches, setMatches] = useState<InviteeMatch[]>([]);
   const [searching, startSearching] = useTransition();
   const [submitting, startSubmitting] = useTransition();
@@ -63,6 +64,7 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
   const onPick = (m: InviteeMatch) => {
     setName(m.display_name ?? '');
     setPhone(m.phone ?? '');
+    if (m.dupr != null) setDupr(String(m.dupr));
     setPickedRegistered(m);
     setOpen(false);
   };
@@ -70,6 +72,7 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
   const onClear = () => {
     setPickedRegistered(null);
     setMatches([]);
+    setDupr('');
   };
 
   const phoneClean = normalizeE164(phone);
@@ -80,10 +83,14 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
     const fd = new FormData(e.currentTarget);
     if (phoneClean) fd.set('phone', phoneClean);
     else fd.delete('phone');
+    const dupr_clean = dupr.trim();
+    if (dupr_clean) fd.set('dupr', dupr_clean);
+    else fd.delete('dupr');
     startSubmitting(async () => {
       await addInvitePlayer(fd);
       setName('');
       setPhone('');
+      setDupr('');
       setPickedRegistered(null);
       setMatches([]);
     });
@@ -167,6 +174,27 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
           className="flex-1 rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
           style={{ border: '1px solid var(--line)' }}
         />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.06em] text-ink-3">
+          DUPR
+        </span>
+        <input
+          name="dupr"
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min="2"
+          max="8"
+          value={dupr}
+          onChange={(e) => setDupr(e.target.value)}
+          placeholder="3.20 default"
+          className="mono w-24 rounded-xl bg-white px-3 py-2 text-sm text-ink outline-none"
+          style={{ border: '1px solid var(--line)' }}
+        />
+        <span className="text-[11px] text-ink-3">
+          Empty = pick from profile, fall back to 3.20
+        </span>
       </div>
 
       {pickedRegistered && (
