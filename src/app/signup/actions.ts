@@ -4,11 +4,13 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fieldString, type FormState } from '@/lib/forms';
-import { validateEmail, validatePassword } from '@/lib/validation';
+import { validatePassword } from '@/lib/validation';
 import { safeNext } from '@/lib/auth-redirect';
+import { normalizeE164 } from '@/lib/phone';
 
 export async function signUpWithPassword(_prev: FormState, formData: FormData): Promise<FormState> {
-  const email = fieldString(formData, 'email').toLowerCase();
+  const phoneRaw = fieldString(formData, 'phone');
+  const phone = normalizeE164(phoneRaw);
   const password = String(formData.get('password') ?? '');
   const display_name = fieldString(formData, 'display_name');
   const next = safeNext(fieldString(formData, 'next') || '/');
@@ -16,46 +18,43 @@ export async function signUpWithPassword(_prev: FormState, formData: FormData): 
   if (!display_name || display_name.length < 1) {
     return { error: 'Display name is required.' };
   }
-  for (const c of [validateEmail(email), validatePassword(password)]) {
-    if (!c.ok) return { error: c.error };
+  if (!phone) {
+    return { error: 'Phone must be in E.164 format (e.g. +15551234567).' };
   }
+  const passCheck = validatePassword(password);
+  if (!passCheck.ok) return { error: passCheck.error };
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
-    email,
+    phone,
     password,
     options: { data: { display_name } },
   });
   if (error) return { error: error.message };
 
-  // Supabase returns a fake success when the email already exists (anti-
-  // enumeration). The dead giveaway: data.user is set but its identities
-  // array is empty. Surface a clear error instead of silently sending the
-  // user back to the login page where their new password won't work.
+  // Supabase returns a fake-success response when the phone is already
+  // registered (anti-enumeration). identities.length === 0 is the tell.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     return {
-      error: 'An account with this email already exists. Try signing in instead.',
+      error: 'An account with this phone already exists. Try signing in instead.',
     };
   }
 
-  // Dev-mode convenience: skip the email-confirmation round-trip. Auto-confirm
+  // Dev-mode convenience: skip the SMS verification round-trip. Auto-confirm
   // the new user via the service-role admin client, then sign them in so the
   // session cookie is set and the redirect lands them logged in.
   if (data.user && !data.session) {
     try {
       const admin = createAdminClient();
-      await admin.auth.admin.updateUserById(data.user.id, { email_confirm: true });
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      await admin.auth.admin.updateUserById(data.user.id, { phone_confirm: true });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ phone, password });
       if (signInErr) {
-        return {
-          ok: 'Account created. Sign in below.',
-          error: undefined,
-        };
+        return { ok: 'Account created. Sign in below.', error: undefined };
       }
     } catch (e) {
       console.error('auto-confirm failed', e);
       return {
-        ok: 'Account created. If sign-in fails, check your email to confirm first.',
+        ok: 'Account created. If sign-in fails, verify your phone first.',
       };
     }
   }

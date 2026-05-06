@@ -25,10 +25,11 @@ export function SignupForm({ next }: { next: string }) {
         style={inputStyle}
       />
       <input
-        name="email"
-        type="email"
+        name="phone"
+        type="tel"
+        inputMode="tel"
         required
-        placeholder="you@email.com"
+        placeholder="+1 555 123 4567"
         className="rounded-2xl px-5 py-[16px] text-base outline-none"
         style={inputStyle}
       />

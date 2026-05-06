@@ -3,29 +3,33 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { fieldString, type FormState } from '@/lib/forms';
-import { validateEmail, validatePassword } from '@/lib/validation';
+import { validatePassword } from '@/lib/validation';
 import { safeNext } from '@/lib/auth-redirect';
+import { normalizeE164 } from '@/lib/phone';
 
+// Phone-only login. Email login was retired — every account uses E.164
+// phone + password.
 export async function signInWithPassword(_prev: FormState, formData: FormData): Promise<FormState> {
-  const email = fieldString(formData, 'email').toLowerCase();
+  const phoneRaw = fieldString(formData, 'phone');
+  const phone = normalizeE164(phoneRaw);
   const password = String(formData.get('password') ?? '');
   const next = safeNext(fieldString(formData, 'next') || '/');
 
-  for (const c of [validateEmail(email), validatePassword(password)]) {
-    if (!c.ok) return { error: c.error };
+  if (!phone) {
+    return { error: 'Enter your phone in E.164 format (e.g. +15551234567).' };
   }
+  const passCheck = validatePassword(password);
+  if (!passCheck.ok) return { error: passCheck.error };
 
   const supabase = await createClient();
-  const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data: authData, error } = await supabase.auth.signInWithPassword({ phone, password });
   if (error) {
     if (error.message.toLowerCase().includes('invalid')) {
-      return { error: 'Email and password did not match.' };
+      return { error: 'Phone and password did not match.' };
     }
     return { error: error.message };
   }
 
-  // When there's no specific destination, drop the organizer on their most
-  // recent tournament so they land in context rather than the home page.
   if (next === '/' && authData.user) {
     const { data: member } = await supabase
       .from('tournament_members')
