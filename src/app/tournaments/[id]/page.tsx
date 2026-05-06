@@ -71,7 +71,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const [{ data: tournament }, { data: matches }, { data: players }] = await Promise.all([
     supabase
       .from('tournaments')
-      .select('id,owner_user_id,name,format,status,whatsapp_group_url,invite_code,gender_mode,created_at,updated_at')
+      .select('id,owner_user_id,name,format,status,whatsapp_group_url,invite_code,gender_mode,pairing_mode,created_at,updated_at')
       .eq('id', id)
       .single(),
     supabase
@@ -84,7 +84,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
       .limit(200),
     supabase
       .from('tournament_players')
-      .select('id,display_name,email,profile_id,gender,phone')
+      .select('id,display_name,email,profile_id,gender,phone,dupr')
       .eq('tournament_id', id)
       .order('created_at', { ascending: true }),
     // Fire-and-forget status refresh in parallel; tab order doesn't depend on
@@ -301,6 +301,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
                 email?: string | null;
                 gender?: 'm' | 'f' | 'x' | null;
                 phone?: string | null;
+                dupr?: number | null;
               };
               return {
                 id: p.id,
@@ -309,6 +310,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
                 profile_id: p.profile_id ?? null,
                 gender: ext.gender ?? null,
                 phone: ext.phone ?? null,
+                dupr: ext.dupr != null ? Number(ext.dupr) : null,
               };
             })}
             hasMatches={hasMatches}
@@ -549,6 +551,7 @@ function SettingsTab({
     profile_id: string | null;
     gender: 'm' | 'f' | 'x' | null;
     phone: string | null;
+    dupr: number | null;
   }[];
   hasMatches: boolean;
   isOwner: boolean;

@@ -57,6 +57,11 @@ export async function createTournamentClient(input: CreateInput): Promise<Create
     p_whatsapp_group_url: null,
     p_player_count: seedCount,
     p_gender_mode: genderModeFor(input.format),
+    // Wizard pairings 'balanced' / 'snake' / 'random' map directly to the
+    // tournament-level pairing_mode; 'manual' (fp-only) doesn't generate
+    // matches automatically so any value is fine — store 'random'.
+    p_pairing_mode:
+      input.pairing === 'balanced' || input.pairing === 'snake' ? input.pairing : 'random',
   });
 
   if (error || !newId) {
