@@ -11,11 +11,12 @@ export function LoginForm({ next }: { next: string }) {
     <form action={formAction} className="mt-7 grid gap-2.5">
       <input type="hidden" name="next" value={next} />
       <input
-        name="email"
-        type="email"
+        name="identifier"
+        type="text"
+        autoComplete="username"
         required
         autoFocus
-        placeholder="you@email.com"
+        placeholder="Phone (+15551234567) or email"
         className="rounded-2xl px-5 py-[18px] text-base outline-none"
         style={{
           background: 'oklch(0.24 0.02 100)',

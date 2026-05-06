@@ -4,17 +4,21 @@ import { useState } from 'react';
 import { Avatar, playerFromName } from '@/components/ui/Avatar';
 import { Chip } from '@/components/ui/Chip';
 import { claimInvitePlayer, removeInvitePlayer, updateInvitePlayer } from './actions';
+import { buildSmsUrl, formatE164, normalizeE164 } from '@/lib/phone';
 
 type Gender = 'm' | 'f' | 'x' | null;
 
 type Props = {
   tournamentId: string;
+  tournamentName?: string;
+  inviteCode?: string;
   player: {
     id: string;
     display_name: string;
     email: string | null;
     profile_id: string | null;
     gender?: Gender;
+    phone?: string | null;
   };
   // The signed-in user's user_id, when they're a member of this tournament
   // and haven't claimed a slot yet. Drives the "This is me" affordance.
@@ -30,6 +34,8 @@ type Props = {
 
 export function RosterRow({
   tournamentId,
+  tournamentName,
+  inviteCode,
   player,
   currentUserId = null,
   userHasClaimedSlot = false,
@@ -39,10 +45,11 @@ export function RosterRow({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(player.display_name);
   const [email, setEmail] = useState(player.email ?? '');
+  const [phone, setPhone] = useState(player.phone ?? '');
   const [gender, setGender] = useState<Gender>(player.gender ?? null);
 
   const linked = !!player.profile_id;
-  const invited = !linked && !!player.email;
+  const invited = !linked && (!!player.email || !!player.phone);
   const isMe = !!currentUserId && player.profile_id === currentUserId;
   const status = isMe ? 'YOU' : linked ? 'IN' : invited ? 'INVITED' : 'PLACEHOLDER';
   const tone: 'court' | 'default' | 'ghost' = isMe || linked ? 'court' : invited ? 'default' : 'ghost';
@@ -51,9 +58,15 @@ export function RosterRow({
     ? 'Linked to your stats'
     : linked
       ? 'Signed up · results post to their history'
-      : invited
-        ? `${player.email} · will link when they sign up`
-        : 'Placeholder · tap edit to add an email';
+      : player.phone
+        ? `${formatE164(player.phone)} · will link when they sign up`
+        : invited
+          ? `${player.email} · will link when they sign up`
+          : 'Placeholder · tap edit to add an email or phone';
+
+  const phoneClean = normalizeE164(phone);
+  const canTextInvite =
+    canManage && !linked && !!phoneClean && !!tournamentName && !!inviteCode;
 
   const canClaim = !!currentUserId && !linked && !userHasClaimedSlot;
 
@@ -120,6 +133,17 @@ export function RosterRow({
               style={{ border: '1px solid var(--line)' }}
               placeholder="Email (optional)"
             />
+            <input
+              name="phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              className="rounded-xl bg-white px-3 py-2.5 text-sm text-ink outline-none"
+              style={{ border: '1px solid var(--line)' }}
+              placeholder="Phone +15551234567"
+            />
             <input type="hidden" name="gender" value={gender ?? ''} />
             {showGender && (
               <div className="flex items-center gap-2">
@@ -160,6 +184,18 @@ export function RosterRow({
               Save
             </button>
           </form>
+          {canTextInvite && phoneClean && tournamentName && inviteCode && (
+            <a
+              href={buildSmsUrl(
+                phoneClean,
+                `Hey ${player.display_name} — you're in the ${tournamentName} pickleball tournament. Track your matches: ${typeof window !== 'undefined' ? window.location.origin : ''}/t/${inviteCode}`,
+              )}
+              className="block w-full rounded-xl px-3 py-2 text-center text-[13px] font-semibold text-white"
+              style={{ background: '#25D366' }}
+            >
+              Text invite via SMS
+            </a>
+          )}
           <form action={removeInvitePlayer}>
             <input type="hidden" name="tournament_id" value={tournamentId} />
             <input type="hidden" name="player_id" value={player.id} />

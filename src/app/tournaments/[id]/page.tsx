@@ -27,7 +27,7 @@ import { deleteTournament, resetTournamentMatches } from './settings-actions';
 import { GenerateMatchesPanel } from './invite/GenerateMatchesPanel';
 import { ManualTeamsPanel } from './invite/ManualTeamsPanel';
 import { RosterRow } from './invite/RosterRow';
-import { addInvitePlayer } from './invite/actions';
+import { AddPlayerForm } from './invite/AddPlayerForm';
 import { ScoreboardClaimBanner } from './ScoreboardClaimBanner';
 import { RecordingsMenu } from '@/components/RecordingsMenu';
 
@@ -84,7 +84,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
       .limit(200),
     supabase
       .from('tournament_players')
-      .select('id,display_name,email,profile_id,gender')
+      .select('id,display_name,email,profile_id,gender,phone')
       .eq('tournament_id', id)
       .order('created_at', { ascending: true }),
     // Fire-and-forget status refresh in parallel; tab order doesn't depend on
@@ -110,14 +110,23 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
     !playoffsExist && rrMatches.length > 0 && rrPending === 0;
   const isOwner = !!user && user.id === t.owner_user_id;
   let memberRole: string | null = null;
-  if (user && !isOwner) {
-    const { data: member } = await supabase
-      .from('tournament_members')
-      .select('role')
-      .eq('tournament_id', id)
-      .eq('user_id', user.id)
+  let viewerDisplayName: string | null = null;
+  if (user) {
+    if (!isOwner) {
+      const { data: member } = await supabase
+        .from('tournament_members')
+        .select('role')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      memberRole = member?.role ?? null;
+    }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', user.id)
       .maybeSingle();
-    memberRole = member?.role ?? null;
+    viewerDisplayName = (profile?.display_name ?? '').trim() || null;
   }
   const isManager = isOwner || memberRole === 'organizer' || memberRole === 'admin';
   const isMember = isOwner || memberRole !== null;
@@ -272,6 +281,7 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
               <ScoreboardClaimBanner
                 tournamentId={id}
                 claimables={claimableForBanner}
+                viewerDisplayName={viewerDisplayName}
               />
             )}
             <MatchesTab tournamentId={id} matches={rrMatches} showDone={showDone} />
@@ -280,17 +290,27 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
         {tab === 'settings' && isManager && (
           <SettingsTab
             tournamentId={id}
+            tournamentName={t.name}
+            tournamentInviteCode={t.invite_code}
             tournamentFormat={t.format}
             genderMode={(t as Tournament & { gender_mode?: 'open' | 'mixed' | 'same' }).gender_mode ?? 'open'}
             matchCount={m.length}
             playerCount={playerCount}
-            roster={rosterPlayers.map((p) => ({
-              id: p.id,
-              display_name: p.display_name,
-              email: (p as PlayerLike & { email?: string | null }).email ?? null,
-              profile_id: p.profile_id ?? null,
-              gender: (p as PlayerLike & { gender?: 'm' | 'f' | 'x' | null }).gender ?? null,
-            }))}
+            roster={rosterPlayers.map((p) => {
+              const ext = p as PlayerLike & {
+                email?: string | null;
+                gender?: 'm' | 'f' | 'x' | null;
+                phone?: string | null;
+              };
+              return {
+                id: p.id,
+                display_name: p.display_name,
+                email: ext.email ?? null,
+                profile_id: p.profile_id ?? null,
+                gender: ext.gender ?? null,
+                phone: ext.phone ?? null,
+              };
+            })}
             hasMatches={hasMatches}
             isOwner={isOwner}
             currentUserId={user?.id ?? null}
@@ -503,6 +523,8 @@ function playersFromLabel(label: string) {
 
 function SettingsTab({
   tournamentId,
+  tournamentName,
+  tournamentInviteCode,
   tournamentFormat,
   genderMode,
   matchCount,
@@ -514,6 +536,8 @@ function SettingsTab({
   userHasClaimedSlot,
 }: {
   tournamentId: string;
+  tournamentName: string;
+  tournamentInviteCode: string;
   tournamentFormat: string;
   genderMode: 'open' | 'mixed' | 'same';
   matchCount: number;
@@ -524,6 +548,7 @@ function SettingsTab({
     email: string | null;
     profile_id: string | null;
     gender: 'm' | 'f' | 'x' | null;
+    phone: string | null;
   }[];
   hasMatches: boolean;
   isOwner: boolean;
@@ -547,32 +572,11 @@ function SettingsTab({
         }
       />
 
-      <form action={addInvitePlayer} className="mb-3 grid gap-2">
-        <input type="hidden" name="tournament_id" value={tournamentId} />
-        <input
-          name="display_name"
-          placeholder="Player name"
-          required
-          className="rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
-          style={{ border: '1px solid var(--line)' }}
-        />
-        <div className="flex gap-2">
-          <input
-            name="email"
-            type="email"
-            placeholder="Email (optional — links them to history)"
-            className="flex-1 rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
-            style={{ border: '1px solid var(--line)' }}
-          />
-          <button
-            type="submit"
-            className="rounded-xl px-4 text-sm font-semibold"
-            style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-          >
-            Add
-          </button>
-        </div>
-      </form>
+      <AddPlayerForm
+        tournamentId={tournamentId}
+        tournamentName={tournamentName}
+        inviteCode={tournamentInviteCode}
+      />
 
       <div className="mb-5 grid gap-2">
         {roster.length === 0 ? (
@@ -587,6 +591,8 @@ function SettingsTab({
             <RosterRow
               key={p.id}
               tournamentId={tournamentId}
+              tournamentName={tournamentName}
+              inviteCode={tournamentInviteCode}
               player={p}
               currentUserId={currentUserId}
               userHasClaimedSlot={userHasClaimedSlot}

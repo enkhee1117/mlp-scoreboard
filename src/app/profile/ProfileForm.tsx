@@ -60,6 +60,14 @@ export function ProfileForm({
         <div className="space-y-3">
           <Field label="Display name" name="display_name" defaultValue={profile.display_name ?? ''} required />
           <Field label="Full name" name="full_name" defaultValue={profile.full_name ?? ''} />
+          <Field
+            label="Phone (E.164, e.g. +15551234567)"
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            defaultValue={profile.phone ?? ''}
+            placeholder="+15551234567"
+          />
 
           <div>
             <FieldLabel>Gender (for mixed-doubles assignments)</FieldLabel>
@@ -139,6 +147,7 @@ function Field({
   step,
   min,
   max,
+  inputMode,
 }: {
   label: string;
   name: string;
@@ -149,6 +158,7 @@ function Field({
   step?: string;
   min?: string;
   max?: string;
+  inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal' | 'url' | 'search' | 'none';
 }) {
   return (
     <div>
@@ -162,6 +172,7 @@ function Field({
         step={step}
         min={min}
         max={max}
+        inputMode={inputMode}
         className="w-full rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
         style={{ border: '1px solid var(--line)' }}
       />

@@ -10,6 +10,7 @@ export type Profile = {
   dupr_singles: number | null;
   dupr_doubles: number | null;
   bio: string | null;
+  phone: string | null;
   role: AppRole;
   created_at: string;
   updated_at: string;

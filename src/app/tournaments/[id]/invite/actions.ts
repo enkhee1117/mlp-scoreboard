@@ -17,37 +17,60 @@ import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 // new invite UI can call them with a simple void/redirect interface instead
 // of the FormState pattern used by useActionState elsewhere.
 
-export async function addInvitePlayer(formData: FormData): Promise<void> {
+export type InviteeMatch = {
+  user_id: string;
+  display_name: string;
+  phone: string | null;
+  gender: 'm' | 'f' | 'x' | null;
+};
+
+export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const tournamentId = String(formData.get('tournament_id') ?? '').trim();
   const displayName = String(formData.get('display_name') ?? '').trim();
   const emailRaw = String(formData.get('email') ?? '').trim();
+  const phoneRaw = String(formData.get('phone') ?? '').trim();
   if (!tournamentId || displayName.length < 2) {
-    redirect(`/tournaments/${tournamentId}/invite?error=Player%20name%20must%20be%20at%20least%202%20characters`);
+    return { ok: false, error: 'Player name must be at least 2 characters.' };
   }
   if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
-    redirect(
-      `/tournaments/${tournamentId}/invite?error=${encodeURIComponent('Email looks invalid.')}`,
-    );
+    return { ok: false, error: 'Email looks invalid.' };
+  }
+  if (phoneRaw && !/^\+[1-9]\d{6,14}$/.test(phoneRaw)) {
+    return { ok: false, error: 'Phone must be in E.164 format (e.g. +15551234567).' };
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  if (!user) return { ok: false, error: 'Sign in required.' };
 
   const { error } = await supabase.rpc('app_add_tournament_player', {
     p_tournament_id: tournamentId,
     p_display_name: displayName,
     p_email: emailRaw || null,
+    p_phone: phoneRaw || null,
   });
-  if (error) {
-    redirect(`/tournaments/${tournamentId}/invite?error=${encodeURIComponent(formatPgError(error))}`);
-  }
+  if (error) return { ok: false, error: formatPgError(error) };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   revalidatePath(`/tournaments/${tournamentId}/invite`);
-  redirect(`/tournaments/${tournamentId}/invite?ok=Player%20added`);
+  return { ok: true };
+}
+
+export async function searchInvitees(query: string): Promise<InviteeMatch[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase.rpc('app_search_player_invitees', {
+    p_query: trimmed,
+  });
+  if (error || !data) return [];
+  return (data as InviteeMatch[]).slice(0, 5);
 }
 
 export async function updateInvitePlayer(formData: FormData): Promise<void> {

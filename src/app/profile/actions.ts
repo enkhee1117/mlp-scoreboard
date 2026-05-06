@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { fieldOptionalNumber, fieldString, formatPgError, type FormState } from '@/lib/forms';
+import { normalizeE164 } from '@/lib/phone';
 
 export async function saveProfile(_prev: FormState, formData: FormData): Promise<FormState> {
   const supabase = await createClient();
@@ -16,8 +17,13 @@ export async function saveProfile(_prev: FormState, formData: FormData): Promise
   const dupr_singles = fieldOptionalNumber(formData, 'dupr_singles');
   const dupr_doubles = fieldOptionalNumber(formData, 'dupr_doubles');
   const bio = fieldString(formData, 'bio');
+  const phoneRaw = fieldString(formData, 'phone').trim();
+  const phone = phoneRaw ? normalizeE164(phoneRaw) : null;
 
   if (!display_name) return { error: 'Display name is required.' };
+  if (phoneRaw && !phone) {
+    return { error: 'Phone must be in E.164 format (e.g. +15551234567).' };
+  }
 
   const { error } = await supabase.rpc('app_save_profile', {
     p_display_name: display_name,
@@ -27,6 +33,7 @@ export async function saveProfile(_prev: FormState, formData: FormData): Promise
     p_dupr_singles: dupr_singles,
     p_dupr_doubles: dupr_doubles,
     p_bio: bio || null,
+    p_phone: phone,
   });
   if (error) return { error: formatPgError(error) };
 
