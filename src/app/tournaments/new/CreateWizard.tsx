@@ -96,10 +96,17 @@ export function CreateWizard() {
   const namesValid =
     data.rosterMode !== 'names' ||
     visiblePlayers.filter((p) => p.name.trim().length >= 2).length === data.playerCount;
+  // For mixed / same-gender tournaments the auto-generator can't balance
+  // teams without a tag on every player, so the wizard now blocks Continue
+  // until each named row has M or F set.
+  const requireGender =
+    data.rosterMode === 'names' && (genderMode === 'mixed' || genderMode === 'same');
+  const gendersValid =
+    !requireGender || visiblePlayers.every((p) => p.name.trim().length < 2 || p.gender !== null);
 
   const canNext = (() => {
     if (step === 0) return data.name.trim().length > 0;
-    if (step === 3 && data.rosterMode === 'names') return namesValid;
+    if (step === 3 && data.rosterMode === 'names') return namesValid && gendersValid;
     return true;
   })();
 
@@ -463,7 +470,7 @@ function StepRoster({
               className="rounded-xl px-3 py-2 text-[12px]"
               style={{ background: 'oklch(0.96 0.06 75)', color: 'oklch(0.32 0.08 75)', border: '1px solid oklch(0.85 0.08 75)' }}
             >
-              <strong>{ungendered} player{ungendered === 1 ? '' : 's'}</strong> need a gender tag for {genderMode === 'mixed' ? 'mixed-doubles pairing' : 'same-gender matches'}. M {males} · F {females} so far. You can keep going — finish tagging on the roster screen — but matches won&rsquo;t balance correctly until they&rsquo;re tagged.
+              Tag every player as <strong>M</strong> or <strong>F</strong> before continuing — {ungendered} still untagged. M {males} · F {females} so far. {genderMode === 'mixed' ? 'Mixed-doubles pairing' : 'Same-gender matchmaking'} relies on this.
             </div>
           )}
           {Array.from({ length: data.playerCount }).map((_, i) => (
