@@ -13,6 +13,7 @@ import {
 import { canGenerateMatches, pickScheme } from '@/lib/tournament-wizard';
 import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 import { titleCaseName } from '@/lib/text';
+import { normalizeE164 } from '@/lib/phone';
 
 // Thin wrappers around the RPC actions in @/app/tournaments/actions so the
 // new invite UI can call them with a simple void/redirect interface instead
@@ -39,8 +40,12 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
   if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
     return { ok: false, error: 'Email looks invalid.' };
   }
-  if (phoneRaw && !/^\+[1-9]\d{6,14}$/.test(phoneRaw)) {
-    return { ok: false, error: 'Phone must be in E.164 format (e.g. +15551234567).' };
+  // Be lenient about formatting on input — accept "(555) 123-4567",
+  // "+15551234567", "5551234567", etc. normalizeE164 returns null only
+  // when the digits clearly aren't a valid number.
+  const phoneNormalized = phoneRaw ? normalizeE164(phoneRaw) : null;
+  if (phoneRaw && !phoneNormalized) {
+    return { ok: false, error: "Phone doesn't look right — try +15551234567." };
   }
   let dupr: number | null = null;
   if (duprRaw) {
@@ -61,7 +66,7 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
     p_tournament_id: tournamentId,
     p_display_name: displayName,
     p_email: emailRaw || null,
-    p_phone: phoneRaw || null,
+    p_phone: phoneNormalized,
     p_dupr: dupr,
   });
   if (error) return { ok: false, error: formatPgError(error) };
@@ -126,6 +131,14 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
       `/tournaments/${tournamentId}/invite?error=${encodeURIComponent('Email looks invalid.')}`,
     );
   }
+  // Accept loose phone formats — normalize before handing to the RPC, which
+  // requires strict E.164.
+  const phoneNormalized = phoneRaw ? normalizeE164(phoneRaw) : null;
+  if (phoneRaw && !phoneNormalized) {
+    redirect(
+      `/tournaments/${tournamentId}/invite?error=${encodeURIComponent("Phone doesn't look right — try +15551234567.")}`,
+    );
+  }
 
   const supabase = await createClient();
   const {
@@ -138,7 +151,7 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
     p_display_name: displayName,
     p_email: emailRaw || null,
     p_gender: gender,
-    p_phone: phoneRaw || null,
+    p_phone: phoneNormalized,
     p_dupr: dupr,
   });
   if (error) {
