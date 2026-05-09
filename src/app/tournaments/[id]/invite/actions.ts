@@ -12,6 +12,8 @@ import {
 } from '@/lib/match-schemes';
 import { canGenerateMatches, pickScheme } from '@/lib/tournament-wizard';
 import { refreshTournamentStatus } from '@/lib/tournament-status-server';
+import { titleCaseName } from '@/lib/text';
+import { normalizeE164 } from '@/lib/phone';
 
 // Thin wrappers around the RPC actions in @/app/tournaments/actions so the
 // new invite UI can call them with a simple void/redirect interface instead
@@ -27,18 +29,23 @@ export type InviteeMatch = {
 
 export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const tournamentId = String(formData.get('tournament_id') ?? '').trim();
-  const displayName = String(formData.get('display_name') ?? '').trim();
+  const displayName = titleCaseName(String(formData.get('display_name') ?? '').trim());
   const emailRaw = String(formData.get('email') ?? '').trim();
   const phoneRaw = String(formData.get('phone') ?? '').trim();
   const duprRaw = String(formData.get('dupr') ?? '').trim();
+  const profileIdRaw = String(formData.get('user_id') ?? '').trim();
   if (!tournamentId || displayName.length < 2) {
     return { ok: false, error: 'Player name must be at least 2 characters.' };
   }
   if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
     return { ok: false, error: 'Email looks invalid.' };
   }
-  if (phoneRaw && !/^\+[1-9]\d{6,14}$/.test(phoneRaw)) {
-    return { ok: false, error: 'Phone must be in E.164 format (e.g. +15551234567).' };
+  // Be lenient about formatting on input — accept "(555) 123-4567",
+  // "+15551234567", "5551234567", etc. normalizeE164 returns null only
+  // when the digits clearly aren't a valid number.
+  const phoneNormalized = phoneRaw ? normalizeE164(phoneRaw) : null;
+  if (phoneRaw && !phoneNormalized) {
+    return { ok: false, error: "Phone doesn't look right — try +15551234567." };
   }
   let dupr: number | null = null;
   if (duprRaw) {
@@ -55,14 +62,25 @@ export async function addInvitePlayer(formData: FormData): Promise<{ ok: boolean
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sign in required.' };
 
-  const { error } = await supabase.rpc('app_add_tournament_player', {
+  const { data: newPlayerId, error } = await supabase.rpc('app_add_tournament_player', {
     p_tournament_id: tournamentId,
     p_display_name: displayName,
     p_email: emailRaw || null,
-    p_phone: phoneRaw || null,
+    p_phone: phoneNormalized,
     p_dupr: dupr,
   });
   if (error) return { ok: false, error: formatPgError(error) };
+
+  // Typeahead pick → stamp profile_id directly. Phone-match in the RPC
+  // misses profiles with no phone on file, which left these rows showing
+  // as PENDING even though we knew exactly who they were.
+  if (profileIdRaw && newPlayerId) {
+    const { error: linkErr } = await supabase.rpc('app_link_tournament_player_to_profile', {
+      p_player_id: newPlayerId,
+      p_profile_id: profileIdRaw,
+    });
+    if (linkErr) return { ok: false, error: formatPgError(linkErr) };
+  }
 
   revalidatePath(`/tournaments/${tournamentId}`);
   revalidatePath(`/tournaments/${tournamentId}/invite`);
@@ -87,7 +105,7 @@ export async function searchInvitees(query: string): Promise<InviteeMatch[]> {
 export async function updateInvitePlayer(formData: FormData): Promise<void> {
   const tournamentId = String(formData.get('tournament_id') ?? '').trim();
   const playerId = String(formData.get('player_id') ?? '').trim();
-  const displayName = String(formData.get('display_name') ?? '').trim();
+  const displayName = titleCaseName(String(formData.get('display_name') ?? '').trim());
   const emailRaw = String(formData.get('email') ?? '').trim();
   const phoneRaw = String(formData.get('phone') ?? '').trim();
   const genderRaw = String(formData.get('gender') ?? '').trim().toLowerCase();
@@ -113,6 +131,14 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
       `/tournaments/${tournamentId}/invite?error=${encodeURIComponent('Email looks invalid.')}`,
     );
   }
+  // Accept loose phone formats — normalize before handing to the RPC, which
+  // requires strict E.164.
+  const phoneNormalized = phoneRaw ? normalizeE164(phoneRaw) : null;
+  if (phoneRaw && !phoneNormalized) {
+    redirect(
+      `/tournaments/${tournamentId}/invite?error=${encodeURIComponent("Phone doesn't look right — try +15551234567.")}`,
+    );
+  }
 
   const supabase = await createClient();
   const {
@@ -125,7 +151,7 @@ export async function updateInvitePlayer(formData: FormData): Promise<void> {
     p_display_name: displayName,
     p_email: emailRaw || null,
     p_gender: gender,
-    p_phone: phoneRaw || null,
+    p_phone: phoneNormalized,
     p_dupr: dupr,
   });
   if (error) {
