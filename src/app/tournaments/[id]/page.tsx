@@ -22,6 +22,7 @@ import {
 } from '@/lib/scoring';
 import { refreshTournamentStatus } from '@/lib/tournament-status-server';
 import { GeneratePlayoffsForm } from './GeneratePlayoffsForm';
+import { OrganizerBracketBuilder } from './OrganizerBracketBuilder';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { deleteTournament, resetTournamentMatches } from './settings-actions';
 import { GenerateMatchesPanel } from './invite/GenerateMatchesPanel';
@@ -336,6 +337,19 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
             canGenerate={canGeneratePlayoffs}
             rrPending={rrPending}
             hasRoundRobin={rrMatches.length > 0}
+            rrMatches={rrMatches}
+            roster={rosterPlayers.map((p) => {
+              const ext = p as PlayerLike & { gender?: 'm' | 'f' | 'x' | null };
+              return {
+                id: p.id,
+                display_name: p.display_name,
+                gender: ext.gender ?? null,
+              };
+            })}
+            genderMode={
+              (t as Tournament & { gender_mode?: 'open' | 'mixed' | 'same' }).gender_mode ?? 'open'
+            }
+            isManager={isManager}
           />
         )}
       </div>
@@ -832,13 +846,62 @@ function BracketTab({
   canGenerate,
   rrPending,
   hasRoundRobin,
+  rrMatches,
+  roster,
+  genderMode,
+  isManager,
 }: {
   tournamentId: string;
   playoffMatches: MatchRow[];
   canGenerate: boolean;
   rrPending: number;
   hasRoundRobin: boolean;
+  rrMatches: MatchRow[];
+  roster: { id: string; display_name: string; gender: 'm' | 'f' | 'x' | null }[];
+  genderMode: 'open' | 'mixed' | 'same';
+  isManager: boolean;
 }) {
+  // Compute player rank from completed RR matches so the organizer builder
+  // can show "M1 / F2" labels and pre-fill its Auto-pair button with a
+  // standings-aware default.
+  const rankedRoster: Array<{ id: string; name: string; gender: 'm' | 'f' | 'x' | null; rank: number | null }> = (() => {
+    const completedRR = rrMatches
+      .filter((row) => row.completed_at && row.winner_side !== null)
+      .map((row) => {
+        const games = row.match_games ?? [];
+        return {
+          id: row.id,
+          team_a_label: row.team_a_label,
+          team_b_label: row.team_b_label,
+          winner_side: row.winner_side,
+          team_a_score: row.team_a_score,
+          team_b_score: row.team_b_score,
+          games_won_a: games.filter((g) => g.team_a_score > g.team_b_score).length,
+          games_won_b: games.filter((g) => g.team_b_score > g.team_a_score).length,
+        };
+      });
+    const standings = completedRR.length > 0 ? computePlayerStandings(completedRR) : [];
+    const rankByName = new Map(standings.map((s, i) => [s.team, i + 1]));
+    // Sort roster by rank when known, else by name. Ungendered tournaments
+    // also use this ordering for the single combined list.
+    const annotated = roster.map((p) => ({
+      id: p.id,
+      name: p.display_name,
+      gender: p.gender,
+      rank: rankByName.get(p.display_name) ?? null,
+    }));
+    annotated.sort((a, b) => {
+      if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name);
+      if (a.rank == null) return 1;
+      if (b.rank == null) return -1;
+      return a.rank - b.rank;
+    });
+    return annotated;
+  })();
+  // Mixed RR is the case the auto-seeder can't reason about (M+M vs F+F
+  // semis being the bug). Surface the manual builder there. Same-gender +
+  // open RR can also use it but auto-seed stays the headline path.
+  const showManualBuilder = isManager && canGenerate && genderMode === 'mixed';
   // Empty state — round robin still in progress, or no schedule yet.
   if (playoffMatches.length === 0) {
     return (
@@ -871,6 +934,16 @@ function BracketTab({
                 {rrPending} match{rrPending === 1 ? '' : 'es'} still pending. Once
                 they&rsquo;re all scored, you can seed the bracket.
               </div>
+            </div>
+          ) : showManualBuilder ? (
+            <div className="grid gap-4">
+              <OrganizerBracketBuilder
+                tournamentId={tournamentId}
+                players={rankedRoster}
+                genderMode={genderMode}
+              />
+              <div className="text-center text-[11px] text-ink-3">or</div>
+              <GeneratePlayoffsForm tournamentId={tournamentId} />
             </div>
           ) : (
             <GeneratePlayoffsForm tournamentId={tournamentId} />
