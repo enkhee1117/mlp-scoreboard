@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth';
 import { ALL_PLAYOFF_LABELS } from '@/lib/playoffs';
 import { MatchScreen } from './MatchScreen';
 
@@ -36,20 +37,23 @@ type RosterPlayer = {
 export default async function MatchPage({ params }: PageProps) {
   const { id, matchId } = await params;
   const supabase = await createClient();
+  const user = await getCurrentUser();
 
-  // Fetch the user first so we can decide whether to issue the membership
-  // query in parallel with everything else. Auth lookups are cookie-local so
-  // they don't add a network roundtrip.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const memberRoleQuery = user
+    ? supabase
+        .from('tournament_members')
+        .select('role')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    : Promise.resolve({ data: null });
 
   const [
     { data },
     { data: siblings },
     { data: roster },
     { data: tournament },
-    memberRes,
+    { data: memberRow },
   ] = await Promise.all([
     supabase
       .from('matches')
@@ -67,14 +71,7 @@ export default async function MatchPage({ params }: PageProps) {
       .select('id,display_name,profile_id')
       .eq('tournament_id', id),
     supabase.from('tournaments').select('owner_user_id').eq('id', id).single(),
-    user
-      ? supabase
-          .from('tournament_members')
-          .select('role')
-          .eq('tournament_id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
+    memberRoleQuery,
   ]);
   if (!data) notFound();
   const row = data as MatchRow;
@@ -84,14 +81,12 @@ export default async function MatchPage({ params }: PageProps) {
 
   // Decide whether this user is allowed to record a score. Managers (owner +
   // organizer + admin) always can; players may score matches they're in.
-  // Spectators see a read-only view so a stray tap can't blow away saved
-  // scores via a silently-failed RPC.
   let canScore = false;
   if (user) {
     if (user.id === ownerId) {
       canScore = true;
     } else {
-      const role = (memberRes.data as { role: string } | null)?.role ?? null;
+      const role = (memberRow as { role?: string } | null)?.role ?? null;
       if (role === 'organizer' || role === 'admin') {
         canScore = true;
       } else if (role !== null) {

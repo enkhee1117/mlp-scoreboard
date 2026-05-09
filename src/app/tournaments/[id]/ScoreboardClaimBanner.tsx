@@ -46,13 +46,15 @@ export function ScoreboardClaimBanner({
     router.refresh();
   };
 
-  // Find the roster row that looks like the viewer's profile. If we have a
-  // confident match, render a primary "Are you <name>?" CTA at the top and
-  // tuck the rest of the unclaimed names into smaller pills below.
-  const matchedClaim =
+  // Only run the "confident match" CTA when exactly ONE roster row looks
+  // like the viewer's profile name. Two roster rows named "Sam" with the
+  // viewer's profile "Sam Smith" would otherwise pick the first arbitrarily
+  // and prompt them to claim someone else's slot.
+  const matchedClaims =
     viewerDisplayName != null
-      ? claimables.find((c) => looksLikeMe(c.displayName, viewerDisplayName))
-      : undefined;
+      ? claimables.filter((c) => looksLikeMe(c.displayName, viewerDisplayName))
+      : [];
+  const matchedClaim = matchedClaims.length === 1 ? matchedClaims[0] : undefined;
   const others = matchedClaim ? claimables.filter((c) => c.id !== matchedClaim.id) : claimables;
 
   return (

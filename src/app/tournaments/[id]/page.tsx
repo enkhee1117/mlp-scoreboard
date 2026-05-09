@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth';
 import type { Tournament } from '@/lib/types';
 import { TopBar } from '@/components/ui/TopBar';
 import { Chip } from '@/components/ui/Chip';
@@ -63,20 +64,31 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const tab = sp.tab ?? 'matches';
   const showDone = sp.done === '1';
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   // Fan out every query in parallel — tournament + matches + roster always,
   // plus member role and viewer profile when signed in. Status refresh fires
   // alongside but the page never reads it (next load sees the corrected
   // value).
+  const memberRoleQuery = user
+    ? supabase
+        .from('tournament_members')
+        .select('role')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    : Promise.resolve({ data: null });
+  const viewerProfileQuery = user
+    ? supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle()
+    : Promise.resolve({ data: null });
+
   const [
     { data: tournament },
     { data: matches },
     { data: players },
-    memberRes,
-    profileRes,
+    ,
+    { data: memberRow },
+    { data: viewerProfile },
   ] = await Promise.all([
     supabase
       .from('tournaments')
@@ -96,22 +108,11 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
       .select('id,display_name,email,profile_id,gender,phone,dupr')
       .eq('tournament_id', id)
       .order('created_at', { ascending: true }),
-    user
-      ? supabase
-          .from('tournament_members')
-          .select('role')
-          .eq('tournament_id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    user
-      ? supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('id', user.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
+    // Fire-and-forget status refresh in parallel; the page never reads its
+    // result so we don't await it sequentially.
     refreshTournamentStatus(supabase, id).then(() => ({ data: null })),
+    memberRoleQuery,
+    viewerProfileQuery,
   ]);
 
   if (!tournament) notFound();
@@ -131,12 +132,9 @@ export default async function TournamentDetailPage({ params, searchParams }: Pag
   const canGeneratePlayoffs =
     !playoffsExist && rrMatches.length > 0 && rrPending === 0;
   const isOwner = !!user && user.id === t.owner_user_id;
-  const memberRole = !isOwner
-    ? ((memberRes.data as { role: string } | null)?.role ?? null)
-    : null;
-  const viewerDisplayName = user
-    ? ((profileRes.data as { display_name: string | null } | null)?.display_name ?? '').trim() || null
-    : null;
+  const memberRole: string | null = (memberRow as { role?: string } | null)?.role ?? null;
+  const viewerDisplayName: string | null =
+    ((viewerProfile as { display_name?: string } | null)?.display_name ?? '').trim() || null;
   const isManager = isOwner || memberRole === 'organizer' || memberRole === 'admin';
   const isMember = isOwner || memberRole !== null;
   const playerCount = (players ?? []).length;

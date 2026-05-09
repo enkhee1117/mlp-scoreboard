@@ -95,15 +95,18 @@ export function generateRotatingPartners(
 //
 // Algorithm (per round):
 //   1. Sort players by DUPR descending (stable; fall back to 3.20 for null).
-//   2. Snake-distribute into N games — game 0 gets the highest, game 1 the
-//      2nd-highest, …, then snake back so the lowest DUPR player joins game
-//      0 alongside the highest. Each game ends up with one high, one mid-
-//      high, one mid-low, one low.
-//   3. Within each game-of-4, sort by DUPR. With players p1 (high), p2, p3,
+//   2. If the roster size isn't a multiple of 4, some players HAVE to sit
+//      out the round. We rotate who sits each round (offset by r) so the
+//      same person isn't always benched.
+//   3. Snake-distribute the in-round players into N games — game 0 gets the
+//      highest, game 1 the 2nd-highest, …, then snake back so the lowest
+//      DUPR player joins game 0 alongside the highest. Each game ends up
+//      with one high, one mid-high, one mid-low, one low.
+//   4. Within each game-of-4, sort by DUPR. With players p1 (high), p2, p3,
 //      p4 (low):
 //        - balanced  → team A = p1 + p4, team B = p2 + p3
 //        - snake     → team A = p1 + p2, team B = p3 + p4 (similar-skill teams)
-//   4. To keep partners changing across rounds while preserving the balanced
+//   5. To keep partners changing across rounds while preserving the balanced
 //      distribution, rotate the snake offset by `r % gameCount` each round.
 function generateBalancedRotatingPartners(
   players: string[],
@@ -120,6 +123,8 @@ function generateBalancedRotatingPartners(
   const drafts: MatchDraft[] = [];
   const gameCount = Math.floor(indexed.length / 4);
   if (gameCount === 0) return drafts;
+  const playersPerRound = gameCount * 4;
+  const surplus = indexed.length - playersPerRound;
 
   for (let r = 0; r < opts.rounds; r += 1) {
     // Assign a per-round random tiebreaker so equal-DUPR players don't always
@@ -127,10 +132,15 @@ function generateBalancedRotatingPartners(
     for (const p of indexed) p.rand = opts.rng();
     const sorted = [...indexed].sort((a, b) => b.dupr - a.dupr || a.rand - b.rand);
 
+    // Pick the in-round set with a rotating window so players take turns
+    // sitting out across rounds when the roster size isn't a multiple of 4.
+    const offset = surplus > 0 ? (r * surplus) % indexed.length : 0;
+    const inRound = Array.from({ length: playersPerRound }, (_, i) => sorted[(offset + i) % indexed.length]);
+
     // Snake-distribute. We rotate the starting game by r so the same player
     // doesn't end up in the same position every round.
     const buckets: Array<typeof indexed> = Array.from({ length: gameCount }, () => []);
-    sorted.forEach((p, i) => {
+    inRound.forEach((p, i) => {
       const layer = Math.floor(i / gameCount);
       const within = i % gameCount;
       const target =
@@ -140,7 +150,8 @@ function generateBalancedRotatingPartners(
       buckets[target].push(p);
     });
 
-    // Pair within each game.
+    // Pair within each game. Bucket.slice(0,4) is defensive — every bucket
+    // should have exactly 4 players given playersPerRound = gameCount * 4.
     buckets.forEach((bucket, g) => {
       if (bucket.length < 4) return;
       const [p1, p2, p3, p4] = [...bucket]
