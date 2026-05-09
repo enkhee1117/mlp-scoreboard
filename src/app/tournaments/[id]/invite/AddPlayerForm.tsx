@@ -108,7 +108,13 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
           onChange={(e) => {
             setName(e.target.value);
             setOpen(true);
-            setPickedRegistered(null);
+            // When the user starts editing after picking a registered
+            // profile, clear the auto-prefilled DUPR too — otherwise the
+            // new name is paired with a previous person's score.
+            if (pickedRegistered) {
+              setPickedRegistered(null);
+              setDupr('');
+            }
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
@@ -178,7 +184,10 @@ export function AddPlayerForm({ tournamentId, tournamentName, inviteCode }: Prop
           onChange={(e) => {
             setPhone(e.target.value);
             setOpen(true);
-            setPickedRegistered(null);
+            if (pickedRegistered) {
+              setPickedRegistered(null);
+              setDupr('');
+            }
           }}
           className="flex-1 rounded-xl bg-white px-3.5 py-3 text-sm text-ink outline-none"
           style={{ border: '1px solid var(--line)' }}

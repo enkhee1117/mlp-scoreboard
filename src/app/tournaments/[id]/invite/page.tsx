@@ -8,6 +8,7 @@ import { WhatsAppToggle } from './WhatsAppToggle';
 import { ShareCodeCard } from './ShareCodeCard';
 import { formatInviteCode } from '@/lib/invite-codes';
 import { setInviteWhatsApp } from './actions';
+import { getCurrentUser } from '@/lib/auth';
 
 export default async function InvitePage({
   params,
@@ -20,8 +21,18 @@ export default async function InvitePage({
   const sp = await searchParams;
   const isNew = sp.new === '1';
   const supabase = await createClient();
+  const user = await getCurrentUser();
 
-  const [{ data: tournament }, { count: rosterCount }, { data: { user } }] = await Promise.all([
+  const memberRoleQuery = user
+    ? supabase
+        .from('tournament_members')
+        .select('role')
+        .eq('tournament_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    : Promise.resolve({ data: null });
+
+  const [{ data: tournament }, { count: rosterCount }, { data: memberRow }] = await Promise.all([
     supabase
       .from('tournaments')
       .select('id,name,format,status,whatsapp_group_url,invite_code,owner_user_id')
@@ -31,22 +42,14 @@ export default async function InvitePage({
       .from('tournament_players')
       .select('id', { head: true, count: 'exact' })
       .eq('tournament_id', id),
-    supabase.auth.getUser(),
+    memberRoleQuery,
   ]);
   if (!tournament) notFound();
   const t = tournament as Tournament & { owner_user_id: string };
   const inviteCode = formatInviteCode(t.invite_code);
   const isOwner = !!user && user.id === t.owner_user_id;
-  let isManager = isOwner;
-  if (user && !isOwner) {
-    const { data: member } = await supabase
-      .from('tournament_members')
-      .select('role')
-      .eq('tournament_id', id)
-      .eq('user_id', user.id)
-      .maybeSingle();
-    isManager = member?.role === 'organizer' || member?.role === 'admin';
-  }
+  const role = (memberRow as { role?: string } | null)?.role ?? null;
+  const isManager = isOwner || role === 'organizer' || role === 'admin';
 
   return (
     <div className="flex min-h-full flex-col bg-paper">
