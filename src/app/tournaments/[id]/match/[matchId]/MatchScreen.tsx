@@ -199,7 +199,11 @@ export function MatchScreen({
   };
 
   const winner: 'A' | 'B' = scoreA > scoreB ? 'A' : 'B';
-  const canEnd = scoreA >= 11 || scoreB >= 11;
+  // Standard pickleball: a game ends when one side reaches 11 AND leads by
+  // at least 2. 11-10 is still in play, so don't enable the End button —
+  // the server treats the row as in-progress in that case anyway, but the
+  // client used to flash confetti and mark the match done.
+  const canEnd = (scoreA >= 11 || scoreB >= 11) && Math.abs(scoreA - scoreB) >= 2;
 
   return (
     <div

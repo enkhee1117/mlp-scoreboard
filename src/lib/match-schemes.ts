@@ -12,6 +12,11 @@ export type MatchDraft = {
 
 export type MatchScheme = 'rotating_partners' | 'fixed_partners' | 'single_elimination';
 
+// Default DUPR rating used as a placeholder when a player has no rating on
+// file. Mirrors the SQL default in app_create_tournament / app_add_tournament_player
+// so balanced/snake pairing has something to work with on day one.
+export const DEFAULT_DUPR = 3.2;
+
 const courtLabelFor = (idx: number, courts: number) =>
   `Court ${(idx % Math.max(1, courts)) + 1}`;
 
@@ -110,11 +115,11 @@ function generateBalancedRotatingPartners(
   duprs: (number | null | undefined)[],
   opts: { rounds: number; courts: number; rng: () => number; pairingMode: 'balanced' | 'snake' },
 ): MatchDraft[] {
-  // Pair players with their DUPR (default 3.20 when missing) so the sort is
-  // deterministic on inputs without scores.
+  // Pair players with their DUPR (default DEFAULT_DUPR when missing) so the
+  // sort is deterministic on inputs without scores.
   const indexed = players.map((name, i) => ({
     name,
-    dupr: typeof duprs[i] === 'number' ? (duprs[i] as number) : 3.2,
+    dupr: typeof duprs[i] === 'number' ? (duprs[i] as number) : DEFAULT_DUPR,
     rand: 0,
   }));
   const drafts: MatchDraft[] = [];
