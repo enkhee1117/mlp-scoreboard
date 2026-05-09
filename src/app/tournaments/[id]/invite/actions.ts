@@ -445,7 +445,7 @@ export async function generateMatchesFromRoster(formData: FormData): Promise<voi
           pairingMode,
           duprs,
         })
-      : generateMatchDrafts({ scheme, players, courts });
+      : generateMatchDrafts({ scheme, players, courts, genderMode, genders });
 
   if (drafts.length === 0) {
     redirect(
