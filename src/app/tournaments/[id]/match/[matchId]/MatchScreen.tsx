@@ -199,11 +199,12 @@ export function MatchScreen({
   };
 
   const winner: 'A' | 'B' = scoreA > scoreB ? 'A' : 'B';
-  // Standard pickleball: a game ends when one side reaches 11 AND leads by
-  // at least 2. 11-10 is still in play, so don't enable the End button —
-  // the server treats the row as in-progress in that case anyway, but the
-  // client used to flash confetti and mark the match done.
-  const canEnd = (scoreA >= 11 || scoreB >= 11) && Math.abs(scoreA - scoreB) >= 2;
+  // Either side reached 11 → enable End. Win-by-2 is the standard rule but
+  // organizers run informal games where 11-10 finishes are common, so it's
+  // a warning instead of a hard gate. The warning surfaces below the End
+  // button when the lead is < 2.
+  const canEnd = scoreA >= 11 || scoreB >= 11;
+  const winByOne = canEnd && Math.abs(scoreA - scoreB) < 2;
 
   return (
     <div
@@ -327,6 +328,18 @@ export function MatchScreen({
               style={{ borderColor: 'var(--berry)', color: 'var(--berry)', background: 'oklch(0.96 0.04 12)' }}
             >
               {saveError}
+            </div>
+          )}
+          {winByOne && (
+            <div
+              className="mb-2 rounded-xl px-3 py-2 text-[12px]"
+              style={{
+                background: 'oklch(0.96 0.06 75)',
+                color: 'oklch(0.32 0.08 75)',
+                border: '1px solid oklch(0.85 0.08 75)',
+              }}
+            >
+              Standard pickleball is win by 2 — tap End anyway if you&rsquo;re calling it here.
             </div>
           )}
           <div className="grid grid-cols-4 gap-2">
